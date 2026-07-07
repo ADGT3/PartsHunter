@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parts Hunter</title>
+<link rel="icon" href="/assets/logo.svg">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js" defer></script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <div class="brand">
+        <img class="logo" src="/assets/logo.svg" alt="Parts Hunter logo">
+        <div><div class="kicker">AI Parts Search</div><div class="wordmark">Parts <span>Hunter</span></div></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <h1 class="page">Projects</h1>
+  <div class="muted">Each project is its own search that learns from your feedback. Create one from a plain-language goal.</div>
+
+  <div id="createForm" class="form" style="display:none">
+    <label for="pname">Project name</label>
+    <input type="text" id="pname" placeholder="e.g. McLaren 720S — seats">
+    <label for="pgoal">What are you hunting for? (plain language)</label>
+    <textarea id="pgoal" placeholder="e.g. Find OEM carbon sports seats for a McLaren 720S, complete seats not inserts, with red stitching."></textarea>
+    <div class="hint muted" style="font-size:12px;margin-top:6px">On save, the AI drafts the search queries &amp; rules for you — you can edit them before running.</div>
+    <div class="row">
+      <button class="btn" id="createBtn">Create project</button>
+      <button class="btn grey" id="cancelBtn">Cancel</button>
+    </div>
+    <div id="createMsg"></div>
+  </div>
+
+  <div id="grid" class="pgrid"><div class="muted" style="padding:20px 0">Loading projects…</div></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const grid = document.getElementById('grid');
+  const form = document.getElementById('createForm');
+  function showForm(v){ form.style.display = v ? 'block' : 'none'; if(v) document.getElementById('pname').focus(); }
+
+  async function load() {
+    try {
+      const { projects } = await PH.api('/api/projects');
+      grid.innerHTML = '';
+      projects.forEach((p) => {
+        const a = document.createElement('a');
+        a.className = 'pcard'; a.href = 'project.html?id=' + encodeURIComponent(p.id);
+        const cats = (p.config && p.config.categories) ? p.config.categories.join(' · ') : '';
+        a.innerHTML = '<h3>' + PH.esc(p.name) + '</h3><div class="goal">' + PH.esc(p.goal) + '</div>' +
+          '<div class="meta"><span>' + (p.listing_count || 0) + ' listings</span>' + (cats ? '<span>' + PH.esc(cats) + '</span>' : '') + '</div>';
+        grid.appendChild(a);
+      });
+      const nc = document.createElement('div');
+      nc.className = 'pcard newcard'; nc.textContent = '+ New project';
+      nc.addEventListener('click', () => showForm(true));
+      grid.appendChild(nc);
+    } catch (e) {
+      grid.innerHTML = '<div class="banner err">Could not load projects: ' + PH.esc(e.message) + '<br><span class="muted">If this is the first load, make sure Vercel Postgres is connected.</span></div>';
+    }
+  }
+
+  document.getElementById('cancelBtn').addEventListener('click', () => showForm(false));
+  document.getElementById('createBtn').addEventListener('click', async () => {
+    const name = document.getElementById('pname').value.trim();
+    const goal = document.getElementById('pgoal').value.trim();
+    const msg = document.getElementById('createMsg');
+    if (!name || !goal) { msg.innerHTML = '<div class="banner err">Name and goal are both required.</div>'; return; }
+    msg.innerHTML = '<div class="banner"><span class="spinner"></span> Drafting search config with AI…</div>';
+    try {
+      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal } });
+      location.href = 'project.html?id=' + encodeURIComponent(project.id);
+    } catch (e) {
+      msg.innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>';
+    }
+  });
+
+  load();
+});
+</script>
+</body>
+</html>

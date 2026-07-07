@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parts Hunter — Project</title>
+<link rel="icon" href="/assets/logo.svg">
+<link rel="stylesheet" href="/assets/app.css">
+<script src="/assets/app.js" defer></script>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <a class="brand" href="/index.html">
+        <img class="logo" src="/assets/logo.svg" alt="Parts Hunter logo">
+        <div><div class="kicker">AI Parts Search</div><div class="wordmark">Parts <span>Hunter</span></div></div>
+      </a>
+      <button class="cart-btn" id="cartBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg> Cart <span class="cart-count">0</span></button>
+    </div>
+    <div class="crumb"><a href="/index.html">&#8592; All projects</a></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <h1 class="page" id="pName">Loading…</h1>
+  <div class="muted" id="pGoal"></div>
+
+  <div class="section-title">Search config <span class="muted" style="font-weight:400;font-size:13px">— edit and save; the next run uses this</span></div>
+  <div class="cfg" id="cfg">
+    <h4>Categories (one per line)</h4>
+    <textarea id="cCats"></textarea>
+    <h4>Search queries (one per line)</h4>
+    <textarea id="cQueries"></textarea>
+    <h4>Rules (one per line)</h4>
+    <textarea id="cRules"></textarea>
+    <div class="hint">These queries + rules + your 👍/👎 feedback are passed to the AI on every run.</div>
+    <div class="row" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn grey" id="saveCfg">Save config</button>
+      <button class="btn" id="runBtn">Re-run search now</button>
+      <span id="runMsg" class="muted"></span>
+    </div>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  const id = PH.qs('id');
+  if (!id) { document.getElementById('pName').textContent = 'Missing project id'; return; }
+  PH.mountCart(id);
+  document.getElementById('cartBtn').addEventListener('click', () => PH._openCart());
+  PH.updateCartCount(id);
+
+  let state = { project: null, listings: [], feedback: {} };
+
+  function fbMap(arr) { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; }
+  const linesToArr = (s) => s.split('\n').map((x) => x.trim()).filter(Boolean);
+
+  async function load() {
+    try {
+      const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
+      state.project = data.project;
+      state.listings = data.listings || [];
+      state.feedback = fbMap(data.feedback);
+      render();
+    } catch (e) {
+      document.getElementById('results').innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>';
+    }
+  }
+
+  function render() {
+    const p = state.project;
+    document.getElementById('pName').textContent = p.name;
+    document.getElementById('pGoal').textContent = p.goal;
+    const cfg = p.config || {};
+    document.getElementById('cCats').value = (cfg.categories || []).join('\n');
+    document.getElementById('cQueries').value = (cfg.queries || []).join('\n');
+    document.getElementById('cRules').value = (cfg.rules || []).join('\n');
+
+    const cats = (cfg.categories && cfg.categories.length) ? cfg.categories : [...new Set(state.listings.map((l) => l.section))];
+    const bySec = {}; state.listings.forEach((l) => (bySec[l.section] = bySec[l.section] || []).push(l));
+    Object.keys(bySec).forEach((s) => { if (!cats.includes(s)) cats.push(s); });
+
+    const out = document.getElementById('results');
+    if (!state.listings.length) {
+      out.innerHTML = '<div class="banner">No listings yet. Hit <b>Re-run search now</b> to fetch some.</div>';
+      return;
+    }
+    let html = '';
+    cats.forEach((sec) => {
+      const items = bySec[sec] || []; if (!items.length) return;
+      html += '<div class="section-title">' + PH.esc(sec) + ' <span class="tag">' + items.length + '</span></div><div class="grid">';
+      items.forEach((l) => { html += cardHtml(l); });
+      html += '</div>';
+    });
+    out.innerHTML = html;
+    wireCards();
+  }
+
+  function cardHtml(l) {
+    const v = state.feedback[l.url] || 0;
+    const inCart = PH.cart.has(id, l.url);
+    const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
+    const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">no image</span>';
+    return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
+      '<div class="thumb">' + img +
+        '<div class="vote"><button class="up' + (v > 0 ? ' active' : '') + '" title="Good match">👍</button>' +
+        '<button class="down' + (v < 0 ? ' active' : '') + '" title="Poor match">👎</button></div></div>' +
+      '<div class="body"><div class="ptitle">' + PH.esc(l.title) + '</div>' +
+      '<div class="desc">' + PH.esc(l.description || '') + '</div>' +
+      '<div class="badges">' + badges + '</div>' +
+      '<div class="foot"><div><div class="price">' + PH.esc(l.price || 'Enquire') + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
+      '<div class="foot-actions"><button class="cart-add' + (inCart ? ' in' : '') + '">' + (inCart ? '✓ In list' : 'Add') + '</button>' +
+      '<a class="btn" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View</a></div></div></div>';
+  }
+
+  function wireCards() {
+    document.querySelectorAll('.card').forEach((card) => {
+      const url = card.dataset.url;
+      const l = state.listings.find((x) => x.url === url);
+      card.querySelector('.up').addEventListener('click', () => vote(l, state.feedback[url] > 0 ? 0 : 1));
+      card.querySelector('.down').addEventListener('click', () => vote(l, state.feedback[url] < 0 ? 0 : -1));
+      card.querySelector('.cart-add').addEventListener('click', (e) => {
+        PH.cart.toggle(id, { url: l.url, title: l.title, price: l.price, seller: l.seller, image: l.image, section: l.section });
+        const inCart = PH.cart.has(id, url);
+        e.target.classList.toggle('in', inCart); e.target.textContent = inCart ? '✓ In list' : 'Add';
+        PH.updateCartCount(id);
+      });
+    });
+  }
+
+  async function vote(l, value) {
+    try {
+      await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: l.url, title: l.title, seller: l.seller, vote: value } });
+      if (value === 0) delete state.feedback[l.url]; else state.feedback[l.url] = value;
+      render();
+      PH.toast(value === 0 ? 'Feedback cleared' : (value > 0 ? 'Marked good — future runs will prefer similar' : 'Marked poor — future runs will avoid similar'));
+    } catch (e) { PH.toast('Vote failed: ' + e.message); }
+  }
+
+  document.getElementById('saveCfg').addEventListener('click', async () => {
+    const config = {
+      categories: linesToArr(document.getElementById('cCats').value),
+      queries: linesToArr(document.getElementById('cQueries').value),
+      rules: linesToArr(document.getElementById('cRules').value)
+    };
+    try {
+      const { project } = await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
+      state.project = project; PH.toast('Config saved');
+    } catch (e) { PH.toast('Save failed: ' + e.message); }
+  });
+
+  document.getElementById('runBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('runBtn');
+    const msg = document.getElementById('runMsg');
+    btn.disabled = true;
+    msg.innerHTML = '<span class="spinner"></span> Searching the web with AI… this can take up to a minute.';
+    try {
+      // save any config edits first so the run uses them
+      const config = {
+        categories: linesToArr(document.getElementById('cCats').value),
+        queries: linesToArr(document.getElementById('cQueries').value),
+        rules: linesToArr(document.getElementById('cRules').value)
+      };
+      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
+      const r = await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
+      state.listings = r.listings || [];
+      render();
+      msg.textContent = 'Done — ' + r.count + ' listings.';
+    } catch (e) {
+      msg.innerHTML = '<span style="color:#f0a1a1">' + PH.esc(e.message) + '</span>';
+    } finally { btn.disabled = false; }
+  });
+
+  load();
+});
+</script>
+</body>
+</html>

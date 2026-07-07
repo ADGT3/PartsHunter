@@ -1,37 +1,52 @@
-# PartsHunter — Porsche 992 GT3 RS Weekly Parts Watch
+# Parts Hunter
 
-A weekly, auto-refreshed web page that trawls the internet for OEM Porsche 992 GT3 RS
-parts for sale (front-end collision rebuild: front end, airbag-affected interior with
-red stitching, and left-front suspension). Built for front-end collision sourcing.
+A multi-project, AI-powered parts-hunting app. Each **project** is its own search
+(e.g. "OEM seats for a McLaren 720S") that you refine with an editable config and
+teach with 👍/👎 feedback. Searches run on-demand via a Vercel serverless function
+that calls the Claude API with web search. Deployed on Vercel, backed by Postgres.
 
-## Live site
+## Architecture
 
-Hosted on Vercel (connected to this GitHub repo): every push auto-deploys.
+```
+/public            static frontend (dashboard + project view), served at the site root
+  index.html       projects dashboard + create-project
+  project.html     one project: editable config, results, 👍/👎, cart, "Re-run"
+  /assets          app.css, app.js (API client + per-project cart), logo.svg
+/api               serverless functions (Node, ESM)
+  _db.js           Postgres schema + shared utils + one-time seed of the 992 project
+  _anthropic.js    Claude API: expand a goal → config, and run a web-search parts search
+  _auth.js         access-control seam (open in v1; enforce here later)
+  projects.js      GET list / POST create (AI drafts the config)
+  project.js       GET one / PATCH config / DELETE
+  run.js           POST: run the AI search (with per-project daily run cap)
+  feedback.js      GET / POST 👍/👎 (one vote per listing, fed into the next run)
+```
 
-- `index.html` — the **current** week (always the latest listings)
-- `archive.html` — index of **every past week**, newest first
-- `weeks/YYYY-MM-DD.html` — a permanent dated snapshot saved each Friday
+The **learning loop**: your 👍/👎 votes are stored per project and passed into every
+run's prompt ("prefer similar to these / avoid these"), alongside your editable
+queries and rules. It's feedback-conditioned prompting, not model retraining — results
+compound as you vote.
 
-## How the weekly update works
+## One-time setup on Vercel (only you can do these)
 
-1. A scheduled task runs every **Friday morning**.
-2. It searches the web for matching OEM listings and pulls product images.
-3. It writes a new snapshot at `weeks/<friday-date>.html`.
-4. It overwrites `index.html` with that same content (so the top-level URL is always current).
-5. It adds a new row to `archive.html`.
-6. It commits and pushes to `main` — Vercel redeploys automatically.
+1. **Import the repo** into Vercel (Add New → Project → import `ADGT3/PartsHunter`).
+2. **Add Postgres:** in the Vercel project → **Storage** → create a **Postgres** database
+   and connect it to this project. This auto-sets `POSTGRES_URL` (and friends).
+3. **Add environment variables** (Project → Settings → Environment Variables):
+   - `ANTHROPIC_API_KEY` — **required**. Your Anthropic API key (server-side only).
+   - `ANTHROPIC_MODEL` — optional, defaults to `claude-sonnet-5`.
+   - `RUN_CAP_PER_DAY` — optional, defaults to `20` (max AI runs per project per 24h — cost guard).
+   - `SEARCH_MAX_USES` — optional, defaults to `6` (max web searches per run — speed/cost guard).
+   - `APP_PASSWORD` — optional. Leave unset for now (v1 is open); set later to turn on the access gate.
+4. **Redeploy.** On first load the app auto-creates the tables and seeds the
+   **992 GT3 RS** project with its current listings.
 
-## Scope of parts tracked
+## Notes / limits
 
-- **Front end:** bumper cover, front fenders (L+R), hood, headlights, and front-end
-  lining/attachment pieces.
-- **Interior (airbag-affected):** 992.1 / 992.2 carbon sports seats **with red stitching**,
-  dash/knee airbag components, steering wheel airbag, seatbelts/pretensioners.
-- **Left-front suspension:** control arms, links, knuckle, ball joints, camber hardware.
-
-## Notes
-
-- Product images are hotlinked from source listings; they may stop displaying if a listing
-  is removed. Prices/availability change fast — confirm fitment and airbag/sensor
-  compatibility with each seller before purchase.
-- Not affiliated with Porsche AG. "Porsche" and "GT3 RS" are used for identification only.
+- Serverless functions cap at 60s on Vercel Hobby. A run is bounded (`SEARCH_MAX_USES`)
+  to fit; very deep sweeps may need a higher plan or the scheduled path.
+- The web-search tool version is pinned in `_anthropic.js` (`web_search_20250305`) and the
+  model in `ANTHROPIC_MODEL` — bump these if the API surface changes.
+- Product images are hotlinked from source listings; some may not load if a listing is
+  removed. Carts are stored per project in your browser.
+- Not affiliated with Porsche AG or any manufacturer. Marques are used for identification only.
