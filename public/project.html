@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=4">
-<script src="/assets/app.js?v=4" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=5">
+<script src="/assets/app.js?v=5" defer></script>
 </head>
 <body>
 <header class="hero">
@@ -32,13 +32,16 @@
   </div>
 
   <div class="cfg" id="cfg" hidden>
-    <h4>Categories (one per line)</h4>
+    <h4>Categories</h4>
+    <div class="hint">The section headings your results are grouped under (one per line). These only <b>organise</b> the page — they don't change what's searched. Add a category only if a query will fill it.</div>
     <textarea id="cCats"></textarea>
-    <h4>Search queries (one per line)</h4>
+    <h4>Search queries</h4>
+    <div class="hint">The exact phrases searched on the web — this is what <b>finds</b> listings (one per line). Add a query to cover a new source, seller, or angle you're missing.</div>
     <textarea id="cQueries"></textarea>
-    <h4>Rules (one per line)</h4>
+    <h4>Rules</h4>
+    <div class="hint">The filters the AI must obey when deciding what to <b>keep</b> (one per line) — e.g. "genuine OEM only", "no aftermarket or kits", "specific product pages only", "skip sold/ended". Tighten these to cut junk.</div>
     <textarea id="cRules"></textarea>
-    <div class="hint">These queries + rules + your 👍/👎 feedback are passed to the AI on every run.</div>
+    <div class="hint" style="margin-top:12px">In short: <b>queries find</b> → <b>rules filter</b> → <b>categories sort</b>. These, plus your 👍/👎 feedback, are sent to the AI on every run.</div>
     <div class="row" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
       <button class="btn grey" id="saveCfg">Save changes</button>
       <span class="muted" style="align-self:center">Also saved automatically when you re-run.</span>
