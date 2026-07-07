@@ -102,7 +102,7 @@ export async function runSearch(project, feedback) {
   const system = [
     'You search the web for parts currently for sale and return them as structured data.',
     'Follow the RULES strictly. Only include a listing when it is (a) a SPECIFIC product/item page — never a collection, category, or search-results page — (b) still available (skip sold/ended/out-of-stock), and (c) clearly relevant to the goal.',
-    'When the goal or rules call for OEM/genuine parts, that is MANDATORY: exclude aftermarket, replica, "OE-style", tuner, body-kit, and conversion-kit products entirely — do not include them even with a warning badge. Quality over quantity: it is better to return 2-3 genuinely matching OEM listings than to pad the list with weak, off-target, or aftermarket items.',
+    'When the goal or rules call for OEM/genuine parts, that is MANDATORY: exclude aftermarket, replica, "OE-style", tuner, body-kit, and conversion-kit products entirely — do not include them even with a warning badge. Do not pad the list with weak, off-target, or aftermarket items — but DO return every strong genuine-OEM match you find (there is no cap; more good OEM listings is better). When several match, prefer the most specific/complete one (e.g. an RS-specific package over a generic GT3 part).',
     'If you only have a category/collection/search URL for an item, DROP that item — every listing MUST have a direct product-page URL in "url".',
     'Never fabricate listings, prices, or images. If a page exposes a product image (og:image), put it in "image"; otherwise use an empty string.',
     'Output MUST be ONLY a JSON array (start your reply with "[" and end with "]"), no prose, no markdown fences. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "section" is one of the project categories and "badges" is an array of short tags (e.g. "OEM","New","Used","Aftermarket").'
@@ -113,7 +113,7 @@ export async function runSearch(project, feedback) {
   parts.push('CATEGORIES: ' + (cfg.categories || []).join(' | '));
   parts.push('SEARCH QUERIES (run these, varying phrasing):\n- ' + (cfg.queries || []).join('\n- '));
   parts.push('RULES:\n- ' + (cfg.rules || []).join('\n- '));
-  if (good.length) parts.push('USER MARKED GOOD (prefer similar parts/sellers):\n- ' + good.map((f) => f.listing_title + ' — ' + f.seller).join('\n- '));
+  if (good.length) parts.push('USER MARKED GOOD — RE-INCLUDE these exact listings in your results if still available, and prioritise similar genuine-OEM parts:\n- ' + good.map((f) => (f.listing_title || '(listing)') + ' — ' + (f.seller || '') + ' — ' + f.listing_url).join('\n- '));
   if (bad.length) parts.push('USER MARKED POOR (avoid these and anything similar):\n- ' + bad.map((f) => f.listing_title + ' — ' + f.seller + (f.reason ? ' (' + f.reason + ')' : '')).join('\n- '));
   parts.push('Return ONLY the JSON array of current listings now.');
 
