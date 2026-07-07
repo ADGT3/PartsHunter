@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=3">
-<script src="/assets/app.js?v=3" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=4">
+<script src="/assets/app.js?v=4" defer></script>
 </head>
 <body>
 <header class="hero">
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       '<div class="badges">' + badges + '</div>' +
       '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
       '<div class="foot-actions"><button class="cart-add' + (inCart ? ' in' : '') + '">' + (inCart ? '✓ In list' : 'Add') + '</button>' +
-      '<a class="btn" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View</a></div></div></div>';
+      '<a class="btn" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View</a></div></div></div></div>';
   }
 
   function wireCards() {
