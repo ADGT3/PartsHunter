@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Parts Hunter">
+  <defs>
+    <linearGradient id="m" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#8a93a0"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="14" fill="#15181d" stroke="#2a2f38" stroke-width="2"/>
+  <!-- coupe silhouette -->
+  <path d="M12 38 C9 38 8 34 11 31 C16 25 30 23 38 24 C46 25 52 28 55 33 C56 35 56 37 54 38 Z"
+        fill="url(#m)"/>
+  <path d="M23 27 C28 24 36 24 42 27 L44 31 L22 31 Z" fill="#12151a"/>
+  <path d="M18 35 C30 33 44 33 52 35 L52 37 C44 35 30 35 18 37 Z" fill="#d5001c"/>
+  <circle cx="22" cy="39" r="6" fill="#15181d" stroke="#2a2f38" stroke-width="1.5"/>
+  <circle cx="22" cy="39" r="2.6" fill="url(#m)"/>
+  <circle cx="44" cy="39" r="6" fill="#15181d" stroke="#2a2f38" stroke-width="1.5"/>
+  <circle cx="44" cy="39" r="2.6" fill="url(#m)"/>
+  <path d="M12 46 L48 46 L45 50 L9 50 Z" fill="#d5001c"/>
+</svg>
