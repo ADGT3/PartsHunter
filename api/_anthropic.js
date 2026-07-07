@@ -80,7 +80,14 @@ function extractJson(text) {
   s = s.slice(start);
   const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
   s = s.slice(0, end + 1);
-  return JSON.parse(s);
+  try {
+    return JSON.parse(s);
+  } catch (e) {
+    // The model sometimes emits raw newlines/tabs inside string values, which are
+    // invalid in JSON. Replace unescaped control characters with spaces and retry.
+    const cleaned = s.replace(/[\x00-\x1F]+/g, ' ');
+    return JSON.parse(cleaned);
+  }
 }
 
 export async function expandGoal(goal) {
@@ -105,7 +112,7 @@ export async function runSearch(project, feedback) {
     'When the goal or rules call for OEM/genuine parts, that is MANDATORY: exclude aftermarket, replica, "OE-style", tuner, body-kit, and conversion-kit products entirely — do not include them even with a warning badge. Do not pad the list with weak, off-target, or aftermarket items — but DO return every strong genuine-OEM match you find (there is no cap; more good OEM listings is better). When several match, prefer the most specific/complete one (e.g. an RS-specific package over a generic GT3 part).',
     'If you only have a category/collection/search URL for an item, DROP that item — every listing MUST have a direct product-page URL in "url".',
     'Never fabricate listings, prices, or images. If a page exposes a product image (og:image), put it in "image"; otherwise use an empty string.',
-    'Output MUST be ONLY a JSON array (start your reply with "[" and end with "]"), no prose, no markdown fences. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "section" is one of the project categories and "badges" is an array of short tags (e.g. "OEM","New","Used","Aftermarket").'
+    'Output MUST be ONLY a JSON array (start your reply with "[" and end with "]"), no prose, no markdown fences, and no raw line breaks inside string values. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "section" is one of the project categories and "badges" is an array of short tags (e.g. "OEM","New","Used","Aftermarket").'
   ].join(' ');
 
   const parts = [];
