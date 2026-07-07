@@ -14,7 +14,7 @@ const WEB_SEARCH_TOOL = {
   max_uses: Number(process.env.SEARCH_MAX_USES || 6)
 };
 
-async function call(body) {
+async function rawCall(body) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set on the server.');
   const controller = new AbortController();
@@ -23,17 +23,13 @@ async function call(body) {
   try {
     r = await fetch(API, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': VERSION
-      },
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VERSION },
       body: JSON.stringify(body),
       signal: controller.signal
     });
   } catch (e) {
     if (e && e.name === 'AbortError') {
-      throw new Error('The search ran past the ' + Math.round(RUN_TIMEOUT_MS / 1000) + 's limit and was stopped. Use a faster model (SEARCH_MODEL=claude-sonnet-5), lower SEARCH_MAX_USES, or use a plan with longer function timeouts.');
+      throw new Error('The search ran past the ' + Math.round(RUN_TIMEOUT_MS / 1000) + 's limit and was stopped. Use a faster model or lower SEARCH_MAX_USES.');
     }
     throw e;
   } finally {
@@ -43,15 +39,44 @@ async function call(body) {
     const t = await r.text();
     throw new Error('Anthropic API ' + r.status + ': ' + t.slice(0, 600));
   }
-  const data = await r.json();
-  return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  return await r.json();
+}
+
+function textOf(data) {
+  return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+}
+
+// Simple (no tools) call — used for goal expansion.
+async function call(body) {
+  return textOf(await rawCall(body));
+}
+
+// Agentic call that drives the web_search tool loop and handles `pause_turn`
+// continuations (the API pauses long-running search turns and must be resumed).
+async function callWithSearch(body) {
+  let messages = body.messages.slice();
+  let data;
+  for (let i = 0; i < 6; i++) {
+    data = await rawCall({ ...body, messages });
+    if (data.stop_reason === 'pause_turn') {
+      messages = messages.concat([{ role: 'assistant', content: data.content }]);
+      continue;
+    }
+    break;
+  }
+  const text = textOf(data);
+  if (!text) {
+    const types = ((data && data.content) || []).map((b) => b.type).join(',') || 'none';
+    throw new Error('Search returned no text (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + types + '). Try lowering SEARCH_MAX_USES.');
+  }
+  return text;
 }
 
 function extractJson(text) {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   let s = fence ? fence[1] : text;
   const start = s.search(/[[{]/);
-  if (start === -1) throw new Error('Model did not return JSON. Raw start: ' + text.slice(0, 200));
+  if (start === -1) throw new Error('Model did not return JSON. Raw start: ' + text.slice(0, 300));
   s = s.slice(start);
   const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
   s = s.slice(0, end + 1);
@@ -76,9 +101,10 @@ export async function runSearch(project, feedback) {
 
   const system = [
     'You search the web for parts currently for sale and return them as structured data.',
-    'Follow the RULES strictly. Only include listings that are (a) a specific product/item page (NOT a generic collection/category/search page), (b) still available (skip sold/ended/out-of-stock), and (c) clearly relevant to the goal.',
-    'Never fabricate listings, prices, or images. Include each listing\'s product image URL from the page og:image when available (clean &amp; to &).',
-    'Respond with ONLY a JSON array. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "section" is one of the project categories and "badges" is an array of short tags (e.g. "OEM","New","Used","Aftermarket").'
+    'Follow the RULES strictly. Only include a listing when it is (a) a SPECIFIC product/item page — never a collection, category, or search-results page — (b) still available (skip sold/ended/out-of-stock), and (c) clearly relevant to the goal.',
+    'If you only have a category/collection/search URL for an item, DROP that item — every listing MUST have a direct product-page URL in "url".',
+    'Never fabricate listings, prices, or images. If a page exposes a product image (og:image), put it in "image"; otherwise use an empty string.',
+    'Output MUST be ONLY a JSON array (start your reply with "[" and end with "]"), no prose, no markdown fences. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "section" is one of the project categories and "badges" is an array of short tags (e.g. "OEM","New","Used","Aftermarket").'
   ].join(' ');
 
   const parts = [];
@@ -88,11 +114,11 @@ export async function runSearch(project, feedback) {
   parts.push('RULES:\n- ' + (cfg.rules || []).join('\n- '));
   if (good.length) parts.push('USER MARKED GOOD (prefer similar parts/sellers):\n- ' + good.map((f) => f.listing_title + ' — ' + f.seller).join('\n- '));
   if (bad.length) parts.push('USER MARKED POOR (avoid these and anything similar):\n- ' + bad.map((f) => f.listing_title + ' — ' + f.seller + (f.reason ? ' (' + f.reason + ')' : '')).join('\n- '));
-  parts.push('Return the JSON array of current listings now.');
+  parts.push('Return ONLY the JSON array of current listings now.');
 
-  const text = await call({
+  const text = await callWithSearch({
     model: SEARCH_MODEL,
-    max_tokens: 3500,
+    max_tokens: 8000,
     system,
     messages: [{ role: 'user', content: parts.join('\n\n') }],
     tools: [WEB_SEARCH_TOOL]
