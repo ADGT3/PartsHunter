@@ -1,17 +1,20 @@
 /* Claude API helpers: expand a project goal into a search config, and run a
- * web-search-backed parts search. The Anthropic key lives ONLY in server env. */
+ * web-search-backed search. The Anthropic key lives ONLY in server env.
+ *
+ * IMPORTANT: this module contains NO domain rules (no OEM/aftermarket/salvage
+ * opinions). All search behaviour comes from the project's own goal, categories,
+ * queries, rules, and the user's feedback. The system prompt below is purely
+ * mechanical (how to search thoroughly and what output shape to return). */
 
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
-// The search uses a fast model by default so it finishes inside the serverless
-// time limit, even if ANTHROPIC_MODEL is set to a slower model (e.g. Opus).
 const SEARCH_MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
 const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS || 280000);
 const WEB_SEARCH_TOOL = {
   type: 'web_search_20250305',
   name: 'web_search',
-  max_uses: Number(process.env.SEARCH_MAX_USES || 6)
+  max_uses: Number(process.env.SEARCH_MAX_USES || 8)
 };
 
 async function rawCall(body) {
@@ -46,7 +49,6 @@ function textOf(data) {
   return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
 }
 
-// Simple (no tools) call — used for goal expansion.
 async function call(body) {
   return textOf(await rawCall(body));
 }
@@ -56,7 +58,7 @@ async function call(body) {
 async function callWithSearch(body) {
   let messages = body.messages.slice();
   let data;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 8; i++) {
     data = await rawCall({ ...body, messages });
     if (data.stop_reason === 'pause_turn') {
       messages = messages.concat([{ role: 'assistant', content: data.content }]);
@@ -83,15 +85,13 @@ function extractJson(text) {
   try {
     return JSON.parse(s);
   } catch (e) {
-    // The model sometimes emits raw newlines/tabs inside string values, which are
-    // invalid in JSON. Replace unescaped control characters with spaces and retry.
     const cleaned = s.replace(/[\x00-\x1F]+/g, ' ');
     return JSON.parse(cleaned);
   }
 }
 
 export async function expandGoal(goal) {
-  const system = 'You configure a parts-hunting search. Given a plain-language goal, output a JSON object with exactly these keys: "categories" (array of 2-5 short section names to group listings), "queries" (array of 6-10 web-search query strings using varied phrasing — include part-name, seller-catalog "site:" style, and generic-title angles), and "rules" (array of short guardrail strings, e.g. genuine/OEM preference, exclude inserts/cushions when the goal is a seat, specific-product-pages-only, skip sold/ended, relevance). Respond with ONLY the JSON object, no prose.';
+  const system = 'You configure a search. Given a plain-language goal, output a JSON object with exactly these keys: "categories" (array of 2-5 short section names to group results), "queries" (array of 6-10 web-search query strings using varied phrasing that would find matches for this goal), and "rules" (array of short guardrail strings capturing the constraints implied by the goal — only what the goal actually implies, do not invent unrelated constraints). Respond with ONLY the JSON object, no prose.';
   const text = await call({
     model: MODEL,
     max_tokens: 1200,
@@ -106,23 +106,23 @@ export async function runSearch(project, feedback) {
   const good = (feedback || []).filter((f) => f.vote > 0).slice(0, 25);
   const bad = (feedback || []).filter((f) => f.vote < 0).slice(0, 25);
 
+  // Purely mechanical instructions. No domain opinions — the project's own
+  // GOAL / CATEGORIES / QUERIES / RULES (below) are the single source of truth.
   const system = [
-    'You search the web for parts currently for sale and return them as structured data.',
-    'Follow the RULES strictly. Only include a listing when it is (a) a SPECIFIC product/item page — never a collection, category, or search-results page — (b) still available (skip sold/ended/out-of-stock), and (c) clearly relevant to the goal.',
-    'When the goal or rules call for OEM/genuine parts, that is MANDATORY: exclude aftermarket, replica, "OE-style", tuner, body-kit, and conversion-kit products entirely — do not include them even with a warning badge. Do not pad the list with weak, off-target, or aftermarket items — but DO return every strong genuine-OEM match you find (there is no cap; more good OEM listings is better). When several match, prefer the most specific/complete one (e.g. an RS-specific package over a generic GT3 part).',
-    'EXCEPTION for salvage/donor cars: if the goal or a category is about wrecked, salvage, damaged, donor, or written-off CARS, then whole-vehicle salvage/auction listings ARE valid results for that category — a specific auction lot page counts as a product page, and you must NOT exclude a damaged car as "aftermarket" or "not a part". For those categories, actively search salvage and vehicle-auction platforms (e.g. Copart, IAAI, salvage aggregators, and auction lot sites) and return the specific lot pages.',
-    'If you only have a category/collection/search URL for an item, DROP that item — every listing MUST have a direct product-page URL in "url".',
-    'Never fabricate listings, prices, or images. If a page exposes a product image (og:image), put it in "image"; otherwise use an empty string.',
-    'Output MUST be ONLY a JSON array (start your reply with "[" and end with "]"), no prose, no markdown fences, and no raw line breaks inside string values. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "section" is one of the project categories and "badges" is an array of short tags (e.g. "OEM","New","Used","Aftermarket").'
+    'You are a thorough research assistant that finds items currently for sale on the web and returns them as structured data.',
+    'The user provides a GOAL, CATEGORIES, SEARCH QUERIES, and RULES. The RULES are authoritative: follow them exactly. Do NOT add, assume, or impose any preferences of your own beyond what the goal and rules state.',
+    'Work hard to satisfy the goal: run the given queries, generate and run additional searches as leads emerge, and open/read the actual listing pages when it helps you judge relevance, availability, or details. Prefer verifying on the page over guessing from a snippet. Return every genuinely-matching result you find; do not artificially limit the number.',
+    'Never fabricate listings, prices, or images. Set "section" to one of the project categories. For "image", use the listing page og:image if present, otherwise an empty string.',
+    'Output MUST be ONLY a JSON array (start with "[", end with "]"), no prose, no markdown fences, and no raw line breaks inside string values. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "badges" is an array of short tags.'
   ].join(' ');
 
   const parts = [];
   parts.push('PROJECT GOAL: ' + project.goal);
   parts.push('CATEGORIES: ' + (cfg.categories || []).join(' | '));
-  parts.push('SEARCH QUERIES (run these, varying phrasing):\n- ' + (cfg.queries || []).join('\n- '));
-  parts.push('RULES:\n- ' + (cfg.rules || []).join('\n- '));
-  if (good.length) parts.push('USER MARKED GOOD — RE-INCLUDE these exact listings in your results if still available, and prioritise similar genuine-OEM parts:\n- ' + good.map((f) => (f.listing_title || '(listing)') + ' — ' + (f.seller || '') + ' — ' + f.listing_url).join('\n- '));
-  if (bad.length) parts.push('USER MARKED POOR (avoid these and anything similar):\n- ' + bad.map((f) => f.listing_title + ' — ' + f.seller + (f.reason ? ' (' + f.reason + ')' : '')).join('\n- '));
+  parts.push('SEARCH QUERIES (starting points — also search further as needed):\n- ' + (cfg.queries || []).join('\n- '));
+  parts.push('RULES (authoritative — follow exactly, add nothing of your own):\n- ' + (cfg.rules || []).join('\n- '));
+  if (good.length) parts.push('USER MARKED GOOD — re-include these exact listings if still available, and prioritise similar matches:\n- ' + good.map((f) => (f.listing_title || '(listing)') + ' — ' + (f.seller || '') + ' — ' + f.listing_url).join('\n- '));
+  if (bad.length) parts.push('USER MARKED POOR — avoid these and anything similar:\n- ' + bad.map((f) => f.listing_title + ' — ' + f.seller + (f.reason ? ' (' + f.reason + ')' : '')).join('\n- '));
   parts.push('Return ONLY the JSON array of current listings now.');
 
   const text = await callWithSearch({
