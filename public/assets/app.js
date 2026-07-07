@@ -1,4 +1,4 @@
-/* Parts Hunter — shared frontend helpers, API client, and per-project cart. */
+/* Parts Sniper — shared frontend helpers, API client, and per-project cart. */
 (function () {
   'use strict';
   const PH = {};
@@ -87,7 +87,7 @@
     function copyList() {
       const items = PH.cart.load(pid); if (!items.length) return;
       const groups = {}; items.forEach((i) => (groups[i.seller] = groups[i.seller] || []).push(i));
-      const lines = ['PARTS HUNTER — shopping list', ''];
+      const lines = ['PARTS SNIPER — shopping list', ''];
       Object.keys(groups).forEach((s) => { lines.push('== ' + s + ' =='); groups[s].forEach((i) => lines.push('- ' + i.title + '  [' + (i.price || 'Enquire') + ']  ' + i.url)); lines.push(''); });
       const text = lines.join('\n');
       (navigator.clipboard?.writeText(text) || Promise.reject()).then(() => PH.toast('Copied!'), () => PH.toast('Copy failed'));

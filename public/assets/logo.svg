@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200" role="img" aria-label="Parts Hunter">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 200" width="640" height="200" role="img" aria-label="Parts Sniper">
   <defs>
     <linearGradient id="sil" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff"/>
@@ -48,6 +48,6 @@
 
   <!-- wordmark -->
   <text x="338" y="100" font-family="'Arial Black','Arial Narrow',Arial,sans-serif" font-weight="900" font-style="italic" font-size="60" letter-spacing="1" fill="#d5001c">PARTS</text>
-  <text x="338" y="158" font-family="'Arial Black','Arial Narrow',Arial,sans-serif" font-weight="900" font-style="italic" font-size="60" letter-spacing="1" fill="url(#silw)">HUNTER</text>
-  <text x="342" y="182" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="14" letter-spacing="6" fill="#9aa3af">OEM PARTS FINDER</text>
+  <text x="338" y="158" font-family="'Arial Black','Arial Narrow',Arial,sans-serif" font-weight="900" font-style="italic" font-size="60" letter-spacing="1" fill="url(#silw)">SNIPER</text>
+  <text x="342" y="182" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="14" letter-spacing="6" fill="#9aa3af">AI POWERED SEARCH</text>
 </svg>

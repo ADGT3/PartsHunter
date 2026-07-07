@@ -1,4 +1,4 @@
-# Parts Hunter
+# Parts Sniper
 
 A multi-project, AI-powered parts-hunting app. Each **project** is its own search
 (e.g. "OEM seats for a McLaren 720S") that you refine with an editable config and

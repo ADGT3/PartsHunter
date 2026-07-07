@@ -1,9 +1,9 @@
 {
-  "name": "parts-hunter",
+  "name": "parts-sniper",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Parts Hunter — multi-project AI parts search with feedback learning loop",
+  "description": "Parts Sniper — multi-project AI parts search with feedback learning loop",
   "dependencies": {
     "@vercel/postgres": "^0.10.0"
   }
