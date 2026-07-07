@@ -4,6 +4,29 @@ import { runSearch } from './_anthropic.js';
 
 const CAP = Number(process.env.RUN_CAP_PER_DAY || 20);
 
+// Pull an og:image (or twitter:image) from a listing page so results show a photo
+// even when the AI didn't return an image URL.
+async function ogImage(url) {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 6000);
+    const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
+    clearTimeout(t);
+    if (!r.ok) return '';
+    const html = (await r.text()).slice(0, 500000);
+    const m =
+      html.match(/<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ||
+      html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+    let u = m ? m[1] : '';
+    if (u && u.startsWith('//')) u = 'https:' + u;
+    return u ? u.replace(/&amp;/g, '&') : '';
+  } catch (e) {
+    return '';
+  }
+}
+
 export default async function handler(req, res) {
   try {
     await ensureSchema();
@@ -32,6 +55,15 @@ export default async function handler(req, res) {
     } catch (e) {
       return res.status(502).json({ error: 'Search failed: ' + String(e.message || e) });
     }
+
+    // Enrich listings missing an image by fetching og:image from each page.
+    await Promise.allSettled(
+      listings.slice(0, 30).map(async (l) => {
+        if (l && !l.image && l.url && /^https?:\/\//i.test(l.url)) {
+          l.image = await ogImage(l.url);
+        }
+      })
+    );
 
     const runId = uid();
     await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'On-demand run')`;
