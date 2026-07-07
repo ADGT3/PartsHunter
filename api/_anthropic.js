@@ -7,11 +7,11 @@ const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 // The search uses a fast model by default so it finishes inside the serverless
 // time limit, even if ANTHROPIC_MODEL is set to a slower model (e.g. Opus).
 const SEARCH_MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
-const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS || 52000);
+const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS || 280000);
 const WEB_SEARCH_TOOL = {
   type: 'web_search_20250305',
   name: 'web_search',
-  max_uses: Number(process.env.SEARCH_MAX_USES || 4)
+  max_uses: Number(process.env.SEARCH_MAX_USES || 6)
 };
 
 async function call(body) {
