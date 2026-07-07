@@ -3,37 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>992 GT3 RS Parts Watch — Archive</title>
-<style>
-  :root{--bg:#0d0f12;--panel:#15181d;--line:#2a2f38;--ink:#f2f4f7;--sub:#9aa3af;--red:#d5001c;--gold:#c9a24b}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.5;padding:0 0 60px}
-  .wrap{max-width:820px;margin:0 auto;padding:0 20px}
-  header.hero{background:linear-gradient(135deg,#15181d 0%,#0d0f12 100%);border-bottom:3px solid var(--red);padding:38px 0 30px;margin-bottom:22px}
-  .kicker{color:var(--red);font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:12px}
-  h1{font-size:30px;font-weight:800;margin:6px 0 4px;letter-spacing:-.5px}
-  .dateline{color:var(--sub);font-size:14px}
-  .navlinks{margin-top:14px;font-size:13px}
-  .navlinks a{color:var(--gold);text-decoration:none;border:1px solid var(--line);padding:5px 12px;border-radius:20px;margin-right:8px}
-  .navlinks a:hover{border-color:var(--gold)}
-  ul.weeks{list-style:none}
-  ul.weeks li{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;transition:border-color .15s}
-  ul.weeks li:hover{border-color:var(--gold)}
-  .wk-date{font-weight:700;font-size:16px}
-  .wk-sub{color:var(--sub);font-size:13px;margin-top:2px}
-  .wk-latest{font-size:11px;font-weight:700;color:#7fd7a0;border:1px solid #2f6e4a;background:rgba(47,158,87,.12);padding:2px 8px;border-radius:20px;margin-left:8px}
-  .btn{display:inline-block;background:var(--red);color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:8px 14px;border-radius:8px}
-  .btn:hover{background:#ef1a34}
-  footer{color:var(--sub);font-size:12px;margin-top:30px;border-top:1px solid var(--line);padding-top:16px}
-</style>
+<title>Parts Hunter — Archive</title>
+<link rel="icon" href="/assets/logo.svg">
+<link rel="stylesheet" href="/assets/site.css">
+<script src="/assets/cart.js" defer></script>
 </head>
-<body>
+<body data-week="Archive">
 <header class="hero">
   <div class="wrap">
-    <div class="kicker">Weekly Parts Watch · Archive</div>
-    <h1>Porsche 992 GT3 RS — Past Weeks</h1>
-    <div class="dateline">Every weekly snapshot, kept permanently. Newest first.</div>
-    <div class="navlinks"><a href="index.html">&#8592; Back to this week</a></div>
+    <div class="hero-top">
+      <div class="brand">
+        <img class="logo" src="/assets/logo.svg" alt="Parts Hunter logo">
+        <div>
+          <div class="kicker">Weekly Parts Watch · Archive</div>
+          <div class="wordmark">Parts <span>Hunter</span></div>
+        </div>
+      </div>
+      <button class="cart-btn" id="phCartBtn" aria-label="Open shopping list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+        Cart <span class="cart-count">0</span>
+      </button>
+    </div>
+    <h1 class="project">Porsche 992 GT3 RS &mdash; Past Weeks</h1>
+    <div class="dateline">Every weekly snapshot, kept permanently. Newest first. Your shopping list carries across all of them.</div>
+    <div class="navlinks"><a href="/index.html">&#8592; Back to this week</a></div>
   </div>
 </header>
 
@@ -43,9 +36,9 @@
     <li>
       <div>
         <div class="wk-date">Week of July 10, 2026 <span class="wk-latest">Latest</span></div>
-        <div class="wk-sub">Front end · Carbon sports seats · Left-front suspension · 16 listings</div>
+        <div class="wk-sub">Front end · Carbon sports seats · Left-front suspension · 15 listings</div>
       </div>
-      <a class="btn" href="weeks/2026-07-10.html">View</a>
+      <a class="btn" href="/weeks/2026-07-10.html">View</a>
     </li>
   </ul>
 </div>
