@@ -102,6 +102,7 @@ export async function runSearch(project, feedback) {
   const system = [
     'You search the web for parts currently for sale and return them as structured data.',
     'Follow the RULES strictly. Only include a listing when it is (a) a SPECIFIC product/item page — never a collection, category, or search-results page — (b) still available (skip sold/ended/out-of-stock), and (c) clearly relevant to the goal.',
+    'When the goal or rules call for OEM/genuine parts, that is MANDATORY: exclude aftermarket, replica, "OE-style", tuner, body-kit, and conversion-kit products entirely — do not include them even with a warning badge. Quality over quantity: it is better to return 2-3 genuinely matching OEM listings than to pad the list with weak, off-target, or aftermarket items.',
     'If you only have a category/collection/search URL for an item, DROP that item — every listing MUST have a direct product-page URL in "url".',
     'Never fabricate listings, prices, or images. If a page exposes a product image (og:image), put it in "image"; otherwise use an empty string.',
     'Output MUST be ONLY a JSON array (start your reply with "[" and end with "]"), no prose, no markdown fences. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "section" is one of the project categories and "badges" is an array of short tags (e.g. "OEM","New","Used","Aftermarket").'
