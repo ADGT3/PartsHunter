@@ -89,7 +89,9 @@ async function fetchPageText(url) {
 }
 
 // Agentic loop: drives web_search (server tool, may `pause_turn`) and the
-// fetch_page client tool until the model produces its final answer.
+// fetch_page client tool. Always fulfils every client tool call, and if the
+// research budget is exhausted, forces a final answer with tools disabled so we
+// never return an unfinished (text-less) turn.
 async function agentLoop(body) {
   let messages = body.messages.slice();
   let data;
@@ -104,20 +106,23 @@ async function agentLoop(body) {
       messages = messages.concat([{ role: 'assistant', content: data.content }]);
       const results = [];
       for (const b of data.content || []) {
-        if (b.type === 'tool_use' && b.name === 'fetch_page') {
-          const out = await fetchPageText(b.input && b.input.url);
+        if (b.type === 'tool_use') {
+          const out = b.name === 'fetch_page' ? await fetchPageText(b.input && b.input.url) : ('Unsupported tool: ' + b.name);
           results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
         }
       }
-      if (results.length) {
-        messages = messages.concat([{ role: 'user', content: results }]);
-        continue;
-      }
-      break;
+      messages = messages.concat([{ role: 'user', content: results.length ? results : 'Now output the final JSON array.' }]);
+      continue;
     }
-    break; // end_turn / max_tokens / stop_sequence
+    if (textOf(data)) return data; // got a final text answer
+    messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now.' }]);
   }
-  return data;
+  // Budget exhausted: force a final compile with tools forbidden.
+  const finalMessages = messages.concat([{
+    role: 'user',
+    content: 'Stop researching now. Using everything you have gathered, output ONLY the final JSON array of listings — do not call any tools, no prose.'
+  }]);
+  return await rawCall({ ...body, messages: finalMessages, tool_choice: { type: 'none' } });
 }
 
 function extractJson(text) {
@@ -159,7 +164,7 @@ export async function runSearch(project, feedback) {
 
   const system = [
     'You are a thorough research agent that finds items currently for sale on the web and returns them as structured data.',
-    'You have two tools: web_search (find pages) and fetch_page (open and READ a page). Search engines do not index most individual product or auction-lot pages, so DO NOT rely on search snippets alone: use web_search to find relevant CATEGORY/LISTING pages, then use fetch_page to open those pages and read the individual items on them, and follow links to specific product/lot pages to confirm details and get the image. Iterate — search, open, read, dig deeper — until you have genuinely satisfied the goal.',
+    'You have two tools: web_search (find pages) and fetch_page (open and READ a page). Search engines do not index most individual product or auction-lot pages, so DO NOT rely on search snippets alone: use web_search to find relevant CATEGORY/LISTING pages, then use fetch_page to open those pages and read the individual items on them, and follow links to specific product/lot pages to confirm details and get the image. Iterate — search, open, read, dig deeper — until you have genuinely satisfied the goal. Call ONE tool at a time and wait for its result before the next. Be efficient: you have a limited research budget, so after enough searching and reading, compile and output your results.',
     'The user provides a GOAL, CATEGORIES, SEARCH QUERIES, and RULES. The RULES are authoritative: follow them exactly and add nothing of your own beyond them.',
     'Never fabricate listings, prices, or images. Each result must link to its own product/lot page in "url". Set "section" to one of the project categories. For "image", use the page OG_IMAGE / og:image when present, else an empty string.',
     'When finished, output ONLY a JSON array (start "[", end "]"), no prose, no markdown fences, and no raw line breaks inside string values. Keep each "description" to one short sentence so the JSON is not truncated. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "badges" is an array of short tags.'
