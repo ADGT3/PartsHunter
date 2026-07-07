@@ -117,13 +117,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
     const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">no image</span>';
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
-      '<div class="thumb">' + img +
+      '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img +
         '<div class="vote"><button class="up' + (v > 0 ? ' active' : '') + '" title="Good match">👍</button>' +
         '<button class="down' + (v < 0 ? ' active' : '') + '" title="Poor match">👎</button></div></div>' +
       '<div class="body"><div class="ptitle">' + PH.esc(l.title) + '</div>' +
       '<div class="desc">' + PH.esc(l.description || '') + '</div>' +
       '<div class="badges">' + badges + '</div>' +
-      '<div class="foot"><div><div class="price">' + PH.esc(l.price || 'Enquire') + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
+      '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
       '<div class="foot-actions"><button class="cart-add' + (inCart ? ' in' : '') + '">' + (inCart ? '✓ In list' : 'Add') + '</button>' +
       '<a class="btn" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View</a></div></div></div>';
   }

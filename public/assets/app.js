@@ -8,6 +8,15 @@
   PH.qs = (k) => new URLSearchParams(location.search).get(k);
   PH.parsePrice = (s) => { if (!s) return null; const m = String(s).replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/); return m ? parseFloat(m[1]) : null; };
   PH.money = (n) => '$' + n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  // Display a price nicely: bare numbers -> $18,999; keep "Enquire", "$4,500", "See listing" as-is.
+  PH.fmtPrice = function (p) {
+    if (p == null) return 'Enquire';
+    const s = String(p).trim();
+    if (!s) return 'Enquire';
+    const cleaned = s.replace(/,/g, '');
+    if (/^\d+(\.\d+)?$/.test(cleaned)) return '$' + parseFloat(cleaned).toLocaleString('en-US', { maximumFractionDigits: 0 });
+    return s;
+  };
   PH.toast = (msg) => {
     let t = document.querySelector('.toast');
     if (!t) { t = document.createElement('div'); t.className = 'toast'; document.body.appendChild(t); }
@@ -77,7 +86,7 @@
         groups[seller].forEach((i) => {
           const p = PH.parsePrice(i.price); if (p != null) total += p; else enq++;
           html += '<div class="ph-item">' + (i.image ? '<img src="' + PH.esc(i.image) + '" referrerpolicy="no-referrer" onerror="this.style.visibility=\'hidden\'">' : '<img style="visibility:hidden">') +
-            '<div class="b"><div class="t">' + PH.esc(i.title) + '</div><div class="m">' + PH.esc(i.section || '') + '</div><div class="p">' + PH.esc(i.price || 'Enquire') + '</div>' +
+            '<div class="b"><div class="t">' + PH.esc(i.title) + '</div><div class="m">' + PH.esc(i.section || '') + '</div><div class="p">' + PH.esc(PH.fmtPrice(i.price)) + '</div>' +
             '<a href="' + PH.esc(i.url) + '" target="_blank" rel="noopener">View &rarr;</a><br><button class="rm" data-url="' + PH.esc(i.url) + '">Remove</button></div></div>';
         });
       });

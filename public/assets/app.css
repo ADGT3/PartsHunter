@@ -69,6 +69,7 @@ h1.page{font-size:26px;font-weight:800;margin:24px 0 4px;letter-spacing:-.4px}
 .card:hover{transform:translateY(-3px);border-color:var(--gold)}
 .thumb{height:160px;background:linear-gradient(135deg,#20252d,#12151a);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--line)}
 .thumb img{width:100%;height:100%;object-fit:cover}
+.thumb.noimg{height:72px;background:#12151a}
 .thumb .ph{color:var(--sub);font-size:12px}
 .vote{position:absolute;top:8px;right:8px;display:flex;gap:6px}
 .vote button{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:rgba(13,15,18,.75);font-size:15px;line-height:1}
