@@ -4,24 +4,41 @@
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+// The search uses a fast model by default so it finishes inside the serverless
+// time limit, even if ANTHROPIC_MODEL is set to a slower model (e.g. Opus).
+const SEARCH_MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
+const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS || 52000);
 const WEB_SEARCH_TOOL = {
   type: 'web_search_20250305',
   name: 'web_search',
-  max_uses: Number(process.env.SEARCH_MAX_USES || 6)
+  max_uses: Number(process.env.SEARCH_MAX_USES || 4)
 };
 
 async function call(body) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set on the server.');
-  const r = await fetch(API, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': VERSION
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
+  let r;
+  try {
+    r = await fetch(API, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': VERSION
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error('The search ran past the ' + Math.round(RUN_TIMEOUT_MS / 1000) + 's limit and was stopped. Use a faster model (SEARCH_MODEL=claude-sonnet-5), lower SEARCH_MAX_USES, or use a plan with longer function timeouts.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!r.ok) {
     const t = await r.text();
     throw new Error('Anthropic API ' + r.status + ': ' + t.slice(0, 600));
@@ -74,8 +91,8 @@ export async function runSearch(project, feedback) {
   parts.push('Return the JSON array of current listings now.');
 
   const text = await call({
-    model: MODEL,
-    max_tokens: 4500,
+    model: SEARCH_MODEL,
+    max_tokens: 3500,
     system,
     messages: [{ role: 'user', content: parts.join('\n\n') }],
     tools: [WEB_SEARCH_TOOL]
