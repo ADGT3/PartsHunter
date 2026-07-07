@@ -26,8 +26,13 @@
   <h1 class="page" id="pName">Loading…</h1>
   <div class="muted" id="pGoal"></div>
 
-  <div class="section-title">Search config <span class="muted" style="font-weight:400;font-size:13px">— edit and save; the next run uses this</span></div>
-  <div class="cfg" id="cfg">
+  <div class="toolbar">
+    <button class="btn" id="runBtn">Re-run search now</button>
+    <button class="btn grey" id="refineToggle" aria-expanded="false">⚙ Refine search</button>
+    <span id="runMsg" class="muted"></span>
+  </div>
+
+  <div class="cfg" id="cfg" hidden>
     <h4>Categories (one per line)</h4>
     <textarea id="cCats"></textarea>
     <h4>Search queries (one per line)</h4>
@@ -36,9 +41,8 @@
     <textarea id="cRules"></textarea>
     <div class="hint">These queries + rules + your 👍/👎 feedback are passed to the AI on every run.</div>
     <div class="row" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
-      <button class="btn grey" id="saveCfg">Save config</button>
-      <button class="btn" id="runBtn">Re-run search now</button>
-      <span id="runMsg" class="muted"></span>
+      <button class="btn grey" id="saveCfg">Save changes</button>
+      <span class="muted" style="align-self:center">Also saved automatically when you re-run.</span>
     </div>
   </div>
 
@@ -52,6 +56,15 @@ document.addEventListener('DOMContentLoaded', async function () {
   PH.mountCart(id);
   document.getElementById('cartBtn').addEventListener('click', () => PH._openCart());
   PH.updateCartCount(id);
+
+  // "Refine search" collapsible panel (collapsed by default)
+  const refineBtn = document.getElementById('refineToggle');
+  const cfgPanel = document.getElementById('cfg');
+  refineBtn.addEventListener('click', () => {
+    const opening = cfgPanel.hasAttribute('hidden');
+    if (opening) { cfgPanel.removeAttribute('hidden'); refineBtn.textContent = '⚙ Hide refine'; refineBtn.setAttribute('aria-expanded', 'true'); }
+    else { cfgPanel.setAttribute('hidden', ''); refineBtn.textContent = '⚙ Refine search'; refineBtn.setAttribute('aria-expanded', 'false'); }
+  });
 
   let state = { project: null, listings: [], feedback: {} };
 

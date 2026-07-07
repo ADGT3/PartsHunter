@@ -35,6 +35,8 @@ h1.page{font-size:26px;font-weight:800;margin:24px 0 4px;letter-spacing:-.4px}
 .muted{color:var(--sub);font-size:14px}
 .section-title{font-size:19px;font-weight:800;margin:30px 0 12px;display:flex;align-items:center;gap:10px}
 .section-title .tag{font-size:11px;font-weight:700;background:var(--red);color:#fff;padding:3px 9px;border-radius:20px}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:20px 0 6px}
+[hidden]{display:none !important}
 
 /* project grid (dashboard) */
 .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-top:8px}
