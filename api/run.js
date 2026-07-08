@@ -108,7 +108,7 @@ export default async function handler(req, res) {
 
     await sql`UPDATE projects SET run_count = run_count + 1, last_run_at = now() WHERE id = ${projectId}`;
 
-    const r = await sql`SELECT * FROM listings WHERE run_id = ${runId} ORDER BY section, created_at`;
+    const r = await sql`SELECT *, source FROM listings WHERE run_id = ${runId} ORDER BY section, created_at`;
     return res.status(200).json({ runId, count: listings.length, listings: r.rows });
 
   } catch (e) {
