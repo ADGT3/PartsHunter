@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=8">
-<script src="/assets/app.js?v=8" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=9">
+<script src="/assets/app.js?v=9" defer></script>
 </head>
 <body>
 <header class="hero">
@@ -118,8 +118,14 @@ document.addEventListener('DOMContentLoaded', async function () {
     const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
     const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">no image</span>';
     
-    const source = l.source || 'unknown';
-    const sourceBadge = `<span class="source-badge ${source}">${source.toUpperCase()}</span>`;
+    let sourceBadge = '';
+    if (l.source === 'claude') {
+      sourceBadge = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Anthropic_Claude_logo.svg/512px-Anthropic_Claude_logo.svg.png" class="source-logo" alt="Claude" title="Claude">';
+    } else if (l.source === 'grok') {
+      sourceBadge = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Grok_logo.svg/512px-Grok_logo.svg.png" class="source-logo" alt="Grok" title="Grok">';
+    } else if (l.source === 'hybrid') {
+      sourceBadge = '<span class="source-badge hybrid">HYBRID</span>';
+    }
 
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
       '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img + sourceBadge +
