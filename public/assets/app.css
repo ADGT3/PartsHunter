@@ -125,3 +125,21 @@ h1.page{font-size:26px;font-weight:800;margin:24px 0 4px;letter-spacing:-.4px}
 .ph-copy{background:var(--gold);color:#15181d;border:none}
 .ph-clear{background:transparent;color:var(--sub)}
 @media(max-width:560px){.hero-top{flex-wrap:wrap}.foot{flex-direction:column;align-items:flex-start}}
+
+/* === Source Badges (add this at the very bottom) === */
+.source-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  color: white;
+  font-weight: bold;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+.source-badge.claude { background: #7b4dff; }
+.source-badge.grok   { background: #00b4a6; }
+.source-badge.hybrid { background: #f59e0b; }
