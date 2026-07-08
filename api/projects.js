@@ -1,6 +1,5 @@
 import { sql, ensureSchema, readBody, uid } from './_db.js';
 import { requireAuth } from './_auth.js';
-import { expandGoal } from './_anthropic.js';
 
 export default async function handler(req, res) {
   console.log('=== /api/projects called === Method:', req.method);
@@ -26,16 +25,9 @@ export default async function handler(req, res) {
       const { name, goal } = body;
       if (!name || !goal) return res.status(400).json({ error: 'name and goal required' });
 
-      let config = { categories: [], queries: [], rules: [] };
-      try {
-        config = await expandGoal(goal);
-        console.log('Config expanded OK');
-      } catch (e) {
-        console.error('Config expansion failed:', e.message);
-      }
-
+      // Create project with empty config (we can add AI expansion later)
       const projectId = uid();
-      await sql`INSERT INTO projects (id, name, goal, config) VALUES (${projectId}, ${name}, ${goal}, ${JSON.stringify(config)}::jsonb)`;
+      await sql`INSERT INTO projects (id, name, goal, config) VALUES (${projectId}, ${name}, ${goal}, '{}'::jsonb)`;
 
       const { rows } = await sql`SELECT * FROM projects WHERE id = ${projectId}`;
       console.log('Project created OK');
