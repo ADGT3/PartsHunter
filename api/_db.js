@@ -66,12 +66,4 @@ export async function ensureSchema() {
     UNIQUE (project_id, listing_url)
   )`;
   inited = true;
-  await seedIfEmpty();
-}
-
-async function seedIfEmpty() {
-  const { rows } = await sql`SELECT COUNT(*)::int AS n FROM projects`;
-  if (rows[0].n > 0) return;
-
-  // ... your existing seed code (keep it as is)
 }
