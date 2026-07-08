@@ -87,7 +87,6 @@ export default async function handler(req, res) {
 
     const listings = mergeAndDeduplicate(claudeListings, grokListings);
 
-    // === DEBUG LOG ===
     console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final Merged: ${listings.length}`);
 
     if (listings.length === 0) {
@@ -103,8 +102,8 @@ export default async function handler(req, res) {
 
     for (const l of listings) {
       const badges = Array.isArray(l.badges) ? l.badges : [];
-      await sql`INSERT INTO listings (id, project_id, run_id, section, title, description, price, price_num, currency, condition, seller, url, image, badges)
-        VALUES (${uid()}, ${projectId}, ${runId}, ${l.section || 'Results'}, ${l.title || ''}, ${l.description || ''}, ${l.price || ''}, ${parsePriceNum(l.price)}, ${l.currency || 'USD'}, ${l.condition || ''}, ${l.seller || 'Other'}, ${l.url || ''}, ${l.image || ''}, ${JSON.stringify(badges)}::jsonb)`;
+      await sql`INSERT INTO listings (id, project_id, run_id, section, title, description, price, price_num, currency, condition, seller, url, image, badges, source)
+        VALUES (${uid()}, ${projectId}, ${runId}, ${l.section || 'Results'}, ${l.title || ''}, ${l.description || ''}, ${l.price || ''}, ${parsePriceNum(l.price)}, ${l.currency || 'USD'}, ${l.condition || ''}, ${l.seller || 'Other'}, ${l.url || ''}, ${l.image || ''}, ${JSON.stringify(badges)}::jsonb, ${l.source || 'unknown'})`;
     }
 
     await sql`UPDATE projects SET run_count = run_count + 1, last_run_at = now() WHERE id = ${projectId}`;
