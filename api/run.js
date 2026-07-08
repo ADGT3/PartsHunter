@@ -13,9 +13,8 @@ async function ogImage(url) {
     clearTimeout(t);
     if (!r.ok) return '';
     const html = (await r.text()).slice(0, 500000);
-    const m = html.match(/<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)["']/i) ||
-              html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
-              html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+    const m = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]*content=["']([^"']+)["']/i) ||
+              html.match(/<meta[^>]+name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
     let u = m ? m[1] : '';
     if (u && u.startsWith('//')) u = 'https:' + u;
     return u ? u.replace(/&amp;/g, '&') : '';
@@ -28,20 +27,14 @@ function normalizeUrl(url) {
   return url ? url.replace(/https?:\/\//i, '').replace(/^www\./i, '').split('?')[0].toLowerCase().trim() : '';
 }
 
-function isBetter(newListing, existing) {
-  return (!existing.image && !!newListing.image) ||
-         (!existing.price && !!newListing.price) ||
-         (newListing.description && newListing.description.length > (existing.description || '').length);
-}
-
-function mergeAndDeduplicate(claude, grok) {
+function mergeAndDeduplicate(claude = [], grok = []) {
   const map = new Map();
-  [...(claude || []), ...(grok || [])].forEach(l => {
+  [...claude, ...grok].forEach(l => {
     const key = normalizeUrl(l.url);
     if (!key) return;
     const current = map.get(key);
-    if (!current || isBetter(l, current)) {
-      map.set(key, { ...l, source: current ? 'hybrid' : (l.source || 'grok') });
+    if (!current || (!current.image && l.image) || (!current.price && l.price)) {
+      map.set(key, l);
     }
   });
   return Array.from(map.values());
@@ -68,30 +61,40 @@ export default async function handler(req, res) {
 
     const { rows: fb } = await sql`SELECT listing_url as listing_url, listing_title, seller, vote, reason FROM feedback WHERE project_id = ${projectId}`;
 
-    // Hybrid: run both in parallel
-    const [claudeResult, grokResult] = await Promise.allSettled([
-      runSearch(project, fb),
-      runGrokSearch(project, fb)
-    ]);
+    // Hybrid with graceful fallback
+    let claudeListings = [];
+    let grokListings = [];
 
-    const claudeListings = claudeResult.status === 'fulfilled' ? claudeResult.value : [];
-    const grokListings = grokResult.status === 'fulfilled' ? grokResult.value : [];
+    const claudePromise = runSearch(project, fb).catch(e => {
+      console.error('Claude failed:', e.message);
+      return [];
+    });
+
+    const grokPromise = runGrokSearch(project, fb).catch(e => {
+      console.error('Grok failed:', e.message);
+      return [];
+    });
+
+    [claudeListings, grokListings] = await Promise.all([claudePromise, grokPromise]);
 
     const listings = mergeAndDeduplicate(claudeListings, grokListings);
 
+    if (listings.length === 0) {
+      return res.status(502).json({ error: 'Both search providers returned no results.' });
+    }
+
     // Image enrichment
-    await Promise.allSettled(
-      listings.slice(0, 30).map(async (l) => {
-        if (l && !l.image && l.url) l.image = await ogImage(l.url);
-      })
-    );
+    await Promise.allSettled(listings.slice(0, 30).map(async (l) => {
+      if (!l.image && l.url) l.image = await ogImage(l.url);
+    }));
 
     const runId = uid();
-    await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'Hybrid Claude+Grok run')`;
+    await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'Hybrid Claude + Grok')`;
 
     for (const l of listings) {
       const badges = Array.isArray(l.badges) ? l.badges : [];
-      await sql`INSERT INTO listings (...) VALUES (...)`; // keep your existing insert
+      await sql`INSERT INTO listings (id, project_id, run_id, section, title, description, price, price_num, currency, condition, seller, url, image, badges)
+        VALUES (${uid()}, ${projectId}, ${runId}, ${l.section || 'Results'}, ${l.title || ''}, ${l.description || ''}, ${l.price || ''}, ${parsePriceNum(l.price)}, ${l.currency || 'USD'}, ${l.condition || ''}, ${l.seller || 'Other'}, ${l.url || ''}, ${l.image || ''}, ${JSON.stringify(badges)}::jsonb)`;
     }
 
     await sql`UPDATE projects SET run_count = run_count + 1, last_run_at = now() WHERE id = ${projectId}`;
@@ -100,6 +103,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ runId, count: listings.length, listings: r.rows });
 
   } catch (e) {
+    console.error('Run handler error:', e);
     res.status(500).json({ error: String(e.message || e) });
   }
 }
