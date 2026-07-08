@@ -41,7 +41,7 @@ function mergeAndDeduplicate(claude = [], grok = []) {
     const existing = map.get(key);
     if (!existing) {
       map.set(key, { ...l, source: 'grok' });
-    } else if ((!existing.image && l.image) || (!existing.price && l.price) || l.description?.length > existing.description?.length) {
+    } else if ((!existing.image && l.image) || (!existing.price && l.price) || (l.description && l.description.length > (existing.description || '').length)) {
       map.set(key, { ...l, source: 'hybrid' });
     }
   });
@@ -86,6 +86,9 @@ export default async function handler(req, res) {
     [claudeListings, grokListings] = await Promise.all([claudePromise, grokPromise]);
 
     const listings = mergeAndDeduplicate(claudeListings, grokListings);
+
+    // === DEBUG LOG ===
+    console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final Merged: ${listings.length}`);
 
     if (listings.length === 0) {
       return res.status(502).json({ error: 'No results from either provider.' });
