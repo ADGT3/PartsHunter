@@ -1,4 +1,4 @@
-/* Grok (xAI) — Improved search */
+/* Grok (xAI) — Reliable version */
 import OpenAI from 'openai';
 
 const client = new OpenAI({
@@ -7,28 +7,6 @@ const client = new OpenAI({
 });
 
 const MODEL = process.env.GROK_MODEL || 'grok-4.3';
-
-async function fetchPageText(url) {
-  if (!url || !/^https?:\/\//i.test(url)) return 'FETCH ERROR: invalid url';
-  try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 13000);
-    const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
-    clearTimeout(t);
-    if (!r.ok) return 'FETCH ERROR ' + r.status + ' for ' + url;
-    const html = await r.text();
-    const og = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]*content=["']([^"']+)["']/i);
-    const ogLine = og ? '\nOG_IMAGE: ' + og[1].replace(/&amp;/g, '&') : '';
-    const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
-                     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-                     .replace(/<[^>]+>/g, ' ')
-                     .replace(/\s+/g, ' ')
-                     .trim();
-    return text.slice(0, 12000) + ogLine;
-  } catch (e) {
-    return 'FETCH ERROR: ' + String(e.message || e);
-  }
-}
 
 function extractJson(text) {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -52,26 +30,21 @@ export async function runGrokSearch(project, feedback) {
   const good = (feedback || []).filter(f => f.vote > 0).slice(0, 20);
   const bad = (feedback || []).filter(f => f.vote < 0).slice(0, 20);
 
-  const prompt = `You are Parts Sniper — expert at finding real parts currently for sale to repair damaged cars.
+  const prompt = `You are Parts Sniper. Find real parts currently for sale that match this goal.
 
 PROJECT GOAL: ${project.goal}
 
 CATEGORIES: ${(cfg.categories || []).join(', ')}
 
-SEARCH QUERIES (use these and expand with relevant part numbers and sellers):
-${(cfg.queries || []).join('\n')}
+QUERIES: ${(cfg.queries || []).join('\n')}
 
-RULES (follow these exactly):
-${(cfg.rules || []).join('\n')}
+RULES: ${(cfg.rules || []).join('\n')}
 
-${good.length ? 'GOOD EXAMPLES (find similar listings): ' + good.map(f => f.listing_url).join(', ') : ''}
-${bad.length ? 'AVOID similar to these: ' + bad.map(f => f.listing_url).join(', ') : ''}
+${good.length ? 'Prefer listings similar to these: ' + good.map(f => f.listing_url).join(', ') : ''}
+${bad.length ? 'Avoid listings similar to these: ' + bad.map(f => f.listing_url).join(', ') : ''}
 
-Instructions:
-- Search the web and browse actual listing pages.
-- Extract real current listings with accurate price, condition, seller, and image.
-- Never fabricate listings.
-- Return ONLY a JSON array of listings.`;
+Search the web, browse pages, and return ONLY a JSON array of real current listings.
+Each item must have: section, title, description, price, currency, condition, seller, url, image`;
 
   try {
     const completion = await client.chat.completions.create({
@@ -84,7 +57,7 @@ Instructions:
     const content = completion.choices[0].message.content;
     return extractJson(content);
   } catch (error) {
-    console.error('Grok search error:', error);
-    throw error;
+    console.error('Grok error:', error.message);
+    return []; // Return empty instead of crashing
   }
 }
