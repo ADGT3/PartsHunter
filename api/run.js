@@ -30,28 +30,19 @@ function normalizeUrl(url) {
 function mergeAndDeduplicate(claude = [], grok = []) {
   const map = new Map();
 
-  // Add Claude results first (they have priority)
   claude.forEach(l => {
     const key = normalizeUrl(l.url);
-    if (key) {
-      map.set(key, { ...l, source: 'claude' });
-    }
+    if (key) map.set(key, { ...l, source: 'claude' });
   });
 
-  // Add Grok results — only if truly new
   grok.forEach(l => {
     const key = normalizeUrl(l.url);
     if (!key) return;
-
     const existing = map.get(key);
     if (!existing) {
-      // Completely new from Grok
       map.set(key, { ...l, source: 'grok' });
-    } else {
-      // Duplicate — keep Claude version but mark as hybrid if Grok has better image
-      if (!existing.image && l.image) {
-        map.set(key, { ...existing, image: l.image, source: 'hybrid' });
-      }
+    } else if (!existing.image && l.image) {
+      map.set(key, { ...existing, image: l.image, source: 'hybrid' });
     }
   });
 
@@ -102,12 +93,14 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'No results from either provider.' });
     }
 
-    // Image enrichment (especially important for Grok results)
-    await Promise.allSettled(listings.map(async (l) => {
-      if (!l.image && l.url) {
-        l.image = await ogImage(l.url);
-      }
-    }));
+    // Only enrich first 30 items (safer and faster)
+    await Promise.allSettled(
+      listings.slice(0, 30).map(async (l) => {
+        if (l && !l.image && l.url) {
+          l.image = await ogImage(l.url);
+        }
+      })
+    );
 
     const runId = uid();
     await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'Hybrid run')`;
