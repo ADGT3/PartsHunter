@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=11">
-<script src="/assets/app.js?v=11" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=13">
+<script src="/assets/app.js?v=13" defer></script>
 </head>
 <body>
 <header class="hero">
@@ -120,13 +120,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     
     let sourceBadge = '';
     if (l.source === 'claude') {
-      sourceBadge = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Anthropic_Claude_logo.svg/512px-Anthropic_Claude_logo.svg.png" class="source-logo" alt="Claude" title="Claude">';
+      sourceBadge = '<img src="https://anthropic.com/_next/image?url=%2Fimages%2Fclaude-icon.png&w=64&q=75" class="source-logo" alt="Claude" title="Claude">';
     } else if (l.source === 'grok') {
-      sourceBadge = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Grok_logo.svg/512px-Grok_logo.svg.png" class="source-logo" alt="Grok" title="Grok">';
+      sourceBadge = '<img src="https://x.ai/favicon.ico" class="source-logo" alt="Grok" title="Grok">';
     } else if (l.source === 'hybrid') {
       sourceBadge = '<span class="source-badge hybrid">HYBRID</span>';
     } else {
-      sourceBadge = '<span class="source-badge unknown">' + (l.source || 'UNKNOWN') + '</span>';
+      sourceBadge = '<span class="source-badge unknown">' + (l.source || 'UNKNOWN').toUpperCase() + '</span>';
     }
 
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
