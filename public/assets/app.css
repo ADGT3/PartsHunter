@@ -143,3 +143,12 @@ h1.page{font-size:26px;font-weight:800;margin:24px 0 4px;letter-spacing:-.4px}
 .source-badge.grok   { background: #00b4a6; }
 .source-badge.hybrid { background: #f59e0b; }
 .source-badge.unknown { background: #666; }
+
+.source-logo {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  height: 24px;
+  z-index: 10;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
