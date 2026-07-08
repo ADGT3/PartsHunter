@@ -24,17 +24,25 @@ async function ogImage(url) {
 }
 
 function normalizeUrl(url) {
-  return url ? url.replace(/https?:\/\//i, '').replace(/^www\./i, '').split('?')[0].toLowerCase().trim() : '';
+  if (!url) return '';
+  let u = url.toLowerCase().trim();
+  u = u.replace(/^https?:\/\//, '').replace(/^www\./, '');
+  u = u.split('?')[0];           // remove query string (this catches the ?variant= case)
+  u = u.replace(/\/$/, '');      // remove trailing slash
+  u = u.replace(/en-au\//, '');  // remove language prefix
+  return u;
 }
 
 function mergeAndDeduplicate(claude = [], grok = []) {
   const map = new Map();
 
+  // Claude first (priority)
   claude.forEach(l => {
     const key = normalizeUrl(l.url);
     if (key) map.set(key, { ...l, source: 'claude' });
   });
 
+  // Grok only if new or adds value
   grok.forEach(l => {
     const key = normalizeUrl(l.url);
     if (!key) return;
@@ -87,18 +95,15 @@ export default async function handler(req, res) {
 
     const listings = mergeAndDeduplicate(claudeListings, grokListings);
 
-    console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final Merged: ${listings.length}`);
+    console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
 
     if (listings.length === 0) {
       return res.status(502).json({ error: 'No results from either provider.' });
     }
 
-    // Only enrich first 30 items (safer and faster)
     await Promise.allSettled(
       listings.slice(0, 30).map(async (l) => {
-        if (l && !l.image && l.url) {
-          l.image = await ogImage(l.url);
-        }
+        if (!l.image && l.url) l.image = await ogImage(l.url);
       })
     );
 
