@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=7">
-<script src="/assets/app.js?v=7" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=8">
+<script src="/assets/app.js?v=8" defer></script>
 </head>
 <body>
 <header class="hero">
@@ -33,15 +33,15 @@
 
   <div class="cfg" id="cfg" hidden>
     <h4>Categories</h4>
-    <div class="hint">The section headings your results are grouped under (one per line). These only <b>organise</b> the page — they don't change what's searched. Add a category only if a query will fill it.</div>
+    <div class="hint">The section headings your results are grouped under (one per line). These only <b>organise</b> the page — they don't change what's searched.</div>
     <textarea id="cCats"></textarea>
     <h4>Search queries</h4>
-    <div class="hint">The exact phrases searched on the web — this is what <b>finds</b> listings (one per line). Add a query to cover a new source, seller, or angle you're missing.</div>
+    <div class="hint">The exact phrases searched on the web — this is what <b>finds</b> listings (one per line).</div>
     <textarea id="cQueries"></textarea>
     <h4>Rules</h4>
-    <div class="hint">The filters the AI must obey when deciding what to <b>keep</b> (one per line) — e.g. "genuine OEM only", "no aftermarket or kits", "specific product pages only", "skip sold/ended". Tighten these to cut junk.</div>
+    <div class="hint">The filters the AI must obey when deciding what to <b>keep</b> (one per line).</div>
     <textarea id="cRules"></textarea>
-    <div class="hint" style="margin-top:12px">In short: <b>queries find</b> → <b>rules filter</b> → <b>categories sort</b>. These, plus your 👍/👎 feedback, are sent to the AI on every run.</div>
+    <div class="hint" style="margin-top:12px">In short: <b>queries find</b> → <b>rules filter</b> → <b>categories sort</b>.</div>
     <div class="row" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
       <button class="btn grey" id="saveCfg">Save changes</button>
       <span class="muted" style="align-self:center">Also saved automatically when you re-run.</span>
@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">no image</span>';
     
     const source = l.source || 'unknown';
-    const sourceBadge = `<span class="source-badge ${source}">${source}</span>`;
+    const sourceBadge = `<span class="source-badge ${source}">${source.toUpperCase()}</span>`;
 
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
       '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img + sourceBadge +
