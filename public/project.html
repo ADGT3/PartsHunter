@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=5">
-<script src="/assets/app.js?v=5" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=6">
+<script src="/assets/app.js?v=6" defer></script>
 </head>
 <body>
 <header class="hero">
@@ -33,15 +33,15 @@
 
   <div class="cfg" id="cfg" hidden>
     <h4>Categories</h4>
-    <div class="hint">The section headings your results are grouped under (one per line). These only <b>organise</b> the page — they don't change what's searched. Add a category only if a query will fill it.</div>
+    <div class="hint">The section headings your results are grouped under (one per line). These only <b>organise</b> the page — they don't change what's searched.</div>
     <textarea id="cCats"></textarea>
     <h4>Search queries</h4>
-    <div class="hint">The exact phrases searched on the web — this is what <b>finds</b> listings (one per line). Add a query to cover a new source, seller, or angle you're missing.</div>
+    <div class="hint">The exact phrases searched on the web — this is what <b>finds</b> listings (one per line).</div>
     <textarea id="cQueries"></textarea>
     <h4>Rules</h4>
-    <div class="hint">The filters the AI must obey when deciding what to <b>keep</b> (one per line) — e.g. "genuine OEM only", "no aftermarket or kits", "specific product pages only", "skip sold/ended". Tighten these to cut junk.</div>
+    <div class="hint">The filters the AI must obey when deciding what to <b>keep</b> (one per line).</div>
     <textarea id="cRules"></textarea>
-    <div class="hint" style="margin-top:12px">In short: <b>queries find</b> → <b>rules filter</b> → <b>categories sort</b>. These, plus your 👍/👎 feedback, are sent to the AI on every run.</div>
+    <div class="hint" style="margin-top:12px">In short: <b>queries find</b> → <b>rules filter</b> → <b>categories sort</b>.</div>
     <div class="row" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
       <button class="btn grey" id="saveCfg">Save changes</button>
       <span class="muted" style="align-self:center">Also saved automatically when you re-run.</span>
@@ -59,7 +59,6 @@ document.addEventListener('DOMContentLoaded', async function () {
   document.getElementById('cartBtn').addEventListener('click', () => PH._openCart());
   PH.updateCartCount(id);
 
-  // "Refine search" collapsible panel (collapsed by default)
   const refineBtn = document.getElementById('refineToggle');
   const cfgPanel = document.getElementById('cfg');
   refineBtn.addEventListener('click', () => {
@@ -96,7 +95,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     const cats = (cfg.categories && cfg.categories.length) ? cfg.categories : [...new Set(state.listings.map((l) => l.section))];
     const bySec = {}; state.listings.forEach((l) => (bySec[l.section] = bySec[l.section] || []).push(l));
-    Object.keys(bySec).forEach((s) => { if (!cats.includes(s)) cats.push(s); });
 
     const out = document.getElementById('results');
     if (!state.listings.length) {
@@ -119,8 +117,12 @@ document.addEventListener('DOMContentLoaded', async function () {
     const inCart = PH.cart.has(id, l.url);
     const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
     const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">no image</span>';
+    
+    const sourceClass = l.source ? ` ${l.source}` : '';
+    const sourceBadge = l.source ? `<span class="source-badge${sourceClass}">${l.source}</span>` : '';
+
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
-      '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img +
+      '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img + sourceBadge +
         '<div class="vote"><button class="up' + (v > 0 ? ' active' : '') + '" title="Good match">👍</button>' +
         '<button class="down' + (v < 0 ? ' active' : '') + '" title="Poor match">👎</button></div></div>' +
       '<div class="body"><div class="ptitle">' + PH.esc(l.title) + '</div>' +
@@ -151,10 +153,11 @@ document.addEventListener('DOMContentLoaded', async function () {
       await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: l.url, title: l.title, seller: l.seller, vote: value } });
       if (value === 0) delete state.feedback[l.url]; else state.feedback[l.url] = value;
       render();
-      PH.toast(value === 0 ? 'Feedback cleared' : (value > 0 ? 'Marked good — future runs will prefer similar' : 'Marked poor — future runs will avoid similar'));
+      PH.toast(value === 0 ? 'Feedback cleared' : (value > 0 ? 'Marked good' : 'Marked poor'));
     } catch (e) { PH.toast('Vote failed: ' + e.message); }
   }
 
+  // ... rest of your script (saveCfg, runBtn, load) remains the same
   document.getElementById('saveCfg').addEventListener('click', async () => {
     const config = {
       categories: linesToArr(document.getElementById('cCats').value),
@@ -171,9 +174,8 @@ document.addEventListener('DOMContentLoaded', async function () {
     const btn = document.getElementById('runBtn');
     const msg = document.getElementById('runMsg');
     btn.disabled = true;
-    msg.innerHTML = '<span class="spinner"></span> Searching the web with AI… this can take a couple of minutes.';
+    msg.innerHTML = '<span class="spinner"></span> Searching the web with AI…';
     try {
-      // save any config edits first so the run uses them
       const config = {
         categories: linesToArr(document.getElementById('cCats').value),
         queries: linesToArr(document.getElementById('cQueries').value),
