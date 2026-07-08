@@ -1,10 +1,11 @@
 {
   "name": "parts-sniper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "Parts Sniper — multi-project AI parts search with feedback learning loop",
+  "description": "Parts Sniper — multi-project AI parts search with Claude + Grok hybrid",
   "dependencies": {
-    "@vercel/postgres": "^0.10.0"
+    "@vercel/postgres": "^0.10.0",
+    "openai": "^4.0.0"
   }
 }
