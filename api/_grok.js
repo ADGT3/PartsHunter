@@ -1,4 +1,4 @@
-/* Grok (xAI) helper - improved for parts hunting */
+/* Grok (xAI) helper - Deep search with OEM part numbers & cross-model */
 import OpenAI from 'openai';
 
 const client = new OpenAI({
@@ -52,23 +52,27 @@ export async function runGrokSearch(project, feedback) {
   const good = (feedback || []).filter(f => f.vote > 0).slice(0, 20);
   const bad = (feedback || []).filter(f => f.vote < 0).slice(0, 20);
 
-  const prompt = `You are Parts Sniper — a ruthless expert at finding real vehicle parts for sale right now.
+  const prompt = `You are Parts Sniper — an expert at finding parts to repair damaged cars.
 
 PROJECT GOAL: ${project.goal}
 
+Deep search strategy:
+1. Identify likely OEM part numbers from the goal.
+2. Find compatible models that share those parts (common interchange).
+3. Generate powerful queries using part numbers, model years, and sellers.
+4. Browse actual listing pages for accurate details.
+
 CATEGORIES: ${(cfg.categories || []).join(', ')}
 
-START WITH THESE QUERIES but search further and browse pages:
-${(cfg.queries || []).join('\n')}
+EXISTING QUERIES: ${(cfg.queries || []).join(', ')}
 
 RULES (follow exactly):
 ${(cfg.rules || []).join('\n')}
 
-${good.length ? 'GOOD EXAMPLES (find similar): ' + good.map(f => f.listing_url).join(', ') : ''}
-${bad.length ? 'AVOID similar to: ' + bad.map(f => f.listing_url).join(', ') : ''}
+${good.length ? 'GOOD EXAMPLES: ' + good.map(f => f.listing_url).join(', ') : ''}
+${bad.length ? 'AVOID: ' + bad.map(f => f.listing_url).join(', ') : ''}
 
-Search aggressively, open listing pages, extract accurate price, condition, seller, image. 
-Return ONLY a JSON array of real current listings.`;
+Search aggressively and return ONLY a valid JSON array of current listings.`;
 
   try {
     const completion = await client.chat.completions.create({
