@@ -29,14 +29,23 @@ function normalizeUrl(url) {
 
 function mergeAndDeduplicate(claude = [], grok = []) {
   const map = new Map();
-  [...claude, ...grok].forEach(l => {
+
+  claude.forEach(l => {
+    const key = normalizeUrl(l.url);
+    if (key) map.set(key, { ...l, source: 'claude' });
+  });
+
+  grok.forEach(l => {
     const key = normalizeUrl(l.url);
     if (!key) return;
-    const current = map.get(key);
-    if (!current || (!current.image && l.image) || (!current.price && l.price)) {
-      map.set(key, l);
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, { ...l, source: 'grok' });
+    } else if ((!existing.image && l.image) || (!existing.price && l.price) || l.description?.length > existing.description?.length) {
+      map.set(key, { ...l, source: 'hybrid' });
     }
   });
+
   return Array.from(map.values());
 }
 
@@ -61,7 +70,6 @@ export default async function handler(req, res) {
 
     const { rows: fb } = await sql`SELECT listing_url as listing_url, listing_title, seller, vote, reason FROM feedback WHERE project_id = ${projectId}`;
 
-    // Hybrid with graceful fallback
     let claudeListings = [];
     let grokListings = [];
 
@@ -80,10 +88,9 @@ export default async function handler(req, res) {
     const listings = mergeAndDeduplicate(claudeListings, grokListings);
 
     if (listings.length === 0) {
-      return res.status(502).json({ error: 'Both search providers returned no results.' });
+      return res.status(502).json({ error: 'No results from either provider.' });
     }
 
-    // Image enrichment
     await Promise.allSettled(listings.slice(0, 30).map(async (l) => {
       if (!l.image && l.url) l.image = await ogImage(l.url);
     }));
