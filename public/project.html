@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=10">
-<script src="/assets/app.js?v=10" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=11">
+<script src="/assets/app.js?v=11" defer></script>
 </head>
 <body>
 <header class="hero">
@@ -74,4 +74,132 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   async function load() {
     try {
-      const data = await PH.api('/api/project?id=' + encodeURIComponent
+      const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
+      state.project = data.project;
+      state.listings = data.listings || [];
+      state.feedback = fbMap(data.feedback);
+      render();
+    } catch (e) {
+      document.getElementById('results').innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>';
+    }
+  }
+
+  function render() {
+    const p = state.project;
+    document.getElementById('pName').textContent = p.name;
+    document.getElementById('pGoal').textContent = p.goal;
+    const cfg = p.config || {};
+    document.getElementById('cCats').value = (cfg.categories || []).join('\n');
+    document.getElementById('cQueries').value = (cfg.queries || []).join('\n');
+    document.getElementById('cRules').value = (cfg.rules || []).join('\n');
+
+    const cats = (cfg.categories && cfg.categories.length) ? cfg.categories : [...new Set(state.listings.map((l) => l.section))];
+    const bySec = {}; state.listings.forEach((l) => (bySec[l.section] = bySec[l.section] || []).push(l));
+
+    const out = document.getElementById('results');
+    if (!state.listings.length) {
+      out.innerHTML = '<div class="banner">No listings yet. Hit <b>Re-run search now</b> to fetch some.</div>';
+      return;
+    }
+    let html = '';
+    cats.forEach((sec) => {
+      const items = bySec[sec] || []; if (!items.length) return;
+      html += '<div class="section-title">' + PH.esc(sec) + ' <span class="tag">' + items.length + '</span></div><div class="grid">';
+      items.forEach((l) => { html += cardHtml(l); });
+      html += '</div>';
+    });
+    out.innerHTML = html;
+    wireCards();
+  }
+
+  function cardHtml(l) {
+    const v = state.feedback[l.url] || 0;
+    const inCart = PH.cart.has(id, l.url);
+    const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
+    const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">no image</span>';
+    
+    let sourceBadge = '';
+    if (l.source === 'claude') {
+      sourceBadge = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Anthropic_Claude_logo.svg/512px-Anthropic_Claude_logo.svg.png" class="source-logo" alt="Claude" title="Claude">';
+    } else if (l.source === 'grok') {
+      sourceBadge = '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Grok_logo.svg/512px-Grok_logo.svg.png" class="source-logo" alt="Grok" title="Grok">';
+    } else if (l.source === 'hybrid') {
+      sourceBadge = '<span class="source-badge hybrid">HYBRID</span>';
+    } else {
+      sourceBadge = '<span class="source-badge unknown">' + (l.source || 'UNKNOWN') + '</span>';
+    }
+
+    return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
+      '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img + sourceBadge +
+        '<div class="vote"><button class="up' + (v > 0 ? ' active' : '') + '" title="Good match">👍</button>' +
+        '<button class="down' + (v < 0 ? ' active' : '') + '" title="Poor match">👎</button></div></div>' +
+      '<div class="body"><div class="ptitle">' + PH.esc(l.title) + '</div>' +
+      '<div class="desc">' + PH.esc(l.description || '') + '</div>' +
+      '<div class="badges">' + badges + '</div>' +
+      '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
+      '<div class="foot-actions"><button class="cart-add' + (inCart ? ' in' : '') + '">' + (inCart ? '✓ In list' : 'Add') + '</button>' +
+      '<a class="btn" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View</a></div></div></div></div>';
+  }
+
+  function wireCards() {
+    document.querySelectorAll('.card').forEach((card) => {
+      const url = card.dataset.url;
+      const l = state.listings.find((x) => x.url === url);
+      card.querySelector('.up').addEventListener('click', () => vote(l, state.feedback[url] > 0 ? 0 : 1));
+      card.querySelector('.down').addEventListener('click', () => vote(l, state.feedback[url] < 0 ? 0 : -1));
+      card.querySelector('.cart-add').addEventListener('click', (e) => {
+        PH.cart.toggle(id, { url: l.url, title: l.title, price: l.price, seller: l.seller, image: l.image, section: l.section });
+        const inCart = PH.cart.has(id, url);
+        e.target.classList.toggle('in', inCart); e.target.textContent = inCart ? '✓ In list' : 'Add';
+        PH.updateCartCount(id);
+      });
+    });
+  }
+
+  async function vote(l, value) {
+    try {
+      await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: l.url, title: l.title, seller: l.seller, vote: value } });
+      if (value === 0) delete state.feedback[l.url]; else state.feedback[l.url] = value;
+      render();
+      PH.toast(value === 0 ? 'Feedback cleared' : (value > 0 ? 'Marked good' : 'Marked poor'));
+    } catch (e) { PH.toast('Vote failed: ' + e.message); }
+  }
+
+  document.getElementById('saveCfg').addEventListener('click', async () => {
+    const config = {
+      categories: linesToArr(document.getElementById('cCats').value),
+      queries: linesToArr(document.getElementById('cQueries').value),
+      rules: linesToArr(document.getElementById('cRules').value)
+    };
+    try {
+      const { project } = await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
+      state.project = project; PH.toast('Config saved');
+    } catch (e) { PH.toast('Save failed: ' + e.message); }
+  });
+
+  document.getElementById('runBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('runBtn');
+    const msg = document.getElementById('runMsg');
+    btn.disabled = true;
+    msg.innerHTML = '<span class="spinner"></span> Searching the web with AI… this can take a couple of minutes.';
+    try {
+      const config = {
+        categories: linesToArr(document.getElementById('cCats').value),
+        queries: linesToArr(document.getElementById('cQueries').value),
+        rules: linesToArr(document.getElementById('cRules').value)
+      };
+      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
+      const r = await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
+      state.listings = r.listings || [];
+      render();
+      msg.textContent = 'Done — ' + r.count + ' listings.';
+    } catch (e) {
+      msg.innerHTML = '<span style="color:#f0a1a1">' + PH.esc(e.message) + '</span>';
+    } finally { btn.disabled = false; }
+  });
+
+  load();
+});
+</script>
+</body>
+</html>
