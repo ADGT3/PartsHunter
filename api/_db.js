@@ -1,50 +1,69 @@
-import { sql, ensureSchema, readBody, uid } from './_db.js';
-import { requireAuth } from './_auth.js';
-import { expandGoal } from './_anthropic.js';
+import { sql } from '@vercel/postgres';
 
-export default async function handler(req, res) {
-  console.log('=== /api/projects called === Method:', req.method);
+export { sql };
 
-  try {
-    await ensureSchema();
-    console.log('Schema ensured');
+export const uid = () => (globalThis.crypto?.randomUUID?.() || ('id' + Date.now() + Math.random().toString(16).slice(2)));
 
-    if (!requireAuth(req, res)) {
-      console.log('Auth failed');
-      return;
-    }
+export function parsePriceNum(str) {
+  if (str == null) return null;
+  const m = String(str).replace(/,/g, '').match(/([0-9]+(?:\.[0-9]+)?)/);
+  return m ? Number(m[1]) : null;
+}
 
-    if (req.method === 'GET') {
-      const { rows } = await sql`SELECT * FROM projects ORDER BY created_at DESC`;
-      console.log('GET projects success, count:', rows.length);
-      return res.status(200).json({ projects: rows });
-    }
-
-    if (req.method === 'POST') {
-      const body = await readBody(req);
-      console.log('POST body:', body);
-      const { name, goal } = body;
-      if (!name || !goal) return res.status(400).json({ error: 'name and goal required' });
-
-      let config = { categories: [], queries: [], rules: [] };
-      try {
-        config = await expandGoal(goal);
-        console.log('Config expanded successfully');
-      } catch (e) {
-        console.error('Config expansion failed:', e.message);
-      }
-
-      const projectId = uid();
-      await sql`INSERT INTO projects (id, name, goal, config) VALUES (${projectId}, ${name}, ${goal}, ${JSON.stringify(config)}::jsonb)`;
-
-      const { rows } = await sql`SELECT * FROM projects WHERE id = ${projectId}`;
-      console.log('Project created successfully');
-      return res.status(201).json({ project: rows[0] });
-    }
-
-    res.status(405).json({ error: 'method not allowed' });
-  } catch (e) {
-    console.error('=== /api/projects ERROR ===', e);
-    res.status(500).json({ error: String(e.message || e) });
+export async function readBody(req) {
+  if (req.body != null) {
+    if (typeof req.body === 'string') { try { return JSON.parse(req.body); } catch { return {}; } }
+    return req.body;
   }
+  return await new Promise((resolve) => {
+    let d = '';
+    req.on('data', (c) => (d += c));
+    req.on('end', () => { try { resolve(d ? JSON.parse(d) : {}); } catch { resolve({}); } });
+    req.on('error', () => resolve({}));
+  });
+}
+
+let inited = false;
+export async function ensureSchema() {
+  if (inited) return;
+  await sql`CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    goal TEXT NOT NULL,
+    config JSONB NOT NULL DEFAULT '{}'::jsonb,
+    schedule TEXT,
+    run_count INT NOT NULL DEFAULT 0,
+    last_run_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS runs (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'complete',
+    listing_count INT NOT NULL DEFAULT 0,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS listings (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    run_id TEXT REFERENCES runs(id) ON DELETE CASCADE,
+    section TEXT, title TEXT, description TEXT,
+    price TEXT, price_num NUMERIC, currency TEXT,
+    condition TEXT, seller TEXT, url TEXT, image TEXT,
+    badges JSONB DEFAULT '[]'::jsonb,
+    source TEXT DEFAULT 'unknown',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    listing_url TEXT NOT NULL,
+    listing_title TEXT, seller TEXT,
+    vote INT NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id, listing_url)
+  )`;
+  inited = true;
 }
