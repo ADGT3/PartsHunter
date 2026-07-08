@@ -1,4 +1,4 @@
-/* Grok (xAI) helper - Deep search with OEM part numbers & cross-model */
+/* Grok (xAI) — Deep search with OEM part numbers & cross-model compatibility */
 import OpenAI from 'openai';
 
 const client = new OpenAI({
@@ -52,40 +52,42 @@ export async function runGrokSearch(project, feedback) {
   const good = (feedback || []).filter(f => f.vote > 0).slice(0, 20);
   const bad = (feedback || []).filter(f => f.vote < 0).slice(0, 20);
 
-  const prompt = `You are Parts Sniper — an expert at finding parts to repair damaged cars.
+  const prompt = `You are Parts Sniper — expert at finding real parts to repair damaged cars.
 
 PROJECT GOAL: ${project.goal}
 
-Deep search strategy:
-1. Identify likely OEM part numbers from the goal.
-2. Find compatible models that share those parts (common interchange).
-3. Generate powerful queries using part numbers, model years, and sellers.
-4. Browse actual listing pages for accurate details.
+Deep Research Strategy:
+1. Analyze the goal and identify the most likely OEM part numbers.
+2. Find other compatible car models that use the same parts (interchange / common parts).
+3. Create powerful search queries using part numbers + compatible models.
+4. Browse actual listing pages for accurate price, condition, seller, and images.
+5. Follow the RULES exactly. Never fabricate.
 
 CATEGORIES: ${(cfg.categories || []).join(', ')}
 
-EXISTING QUERIES: ${(cfg.queries || []).join(', ')}
+STARTING QUERIES (expand these significantly):
+${(cfg.queries || []).join('\n')}
 
-RULES (follow exactly):
+RULES (must obey):
 ${(cfg.rules || []).join('\n')}
 
-${good.length ? 'GOOD EXAMPLES: ' + good.map(f => f.listing_url).join(', ') : ''}
-${bad.length ? 'AVOID: ' + bad.map(f => f.listing_url).join(', ') : ''}
+${good.length ? 'GOOD EXAMPLES (find similar): ' + good.map(f => f.listing_url).join(', ') : ''}
+${bad.length ? 'AVOID similar to: ' + bad.map(f => f.listing_url).join(', ') : ''}
 
-Search aggressively and return ONLY a valid JSON array of current listings.`;
+Search aggressively and return ONLY a valid JSON array of current real listings.`;
 
   try {
     const completion = await client.chat.completions.create({
       model: MODEL,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 16000,
-      temperature: 0.5,
+      temperature: 0.4,
     });
 
     const content = completion.choices[0].message.content;
     return extractJson(content);
   } catch (error) {
-    console.error('Grok search error:', error);
+    console.error('Grok deep search error:', error);
     throw error;
   }
 }
