@@ -1,4 +1,4 @@
-/* Claude API helpers with automatic browser fallback */
+/* Claude API helpers with automatic browser decision */
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
@@ -15,7 +15,7 @@ const WEB_SEARCH_TOOL = {
 
 const FETCH_TOOL = {
   name: 'fetch_page',
-  description: 'Fast normal fetch. Use this first for most sites. Returns readable text + og:image. Good for normal websites.',
+  description: 'Fast normal HTTP fetch. Use this first for most sites.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
@@ -25,7 +25,7 @@ const FETCH_TOOL = {
 
 const FETCH_BROWSER_TOOL = {
   name: 'fetch_page_browser',
-  description: 'Use this ONLY for JavaScript-heavy sites (Copart, IAAI, modern dealer/auction sites) or when normal fetch_page returns very little content. Renders the page with a real browser.',
+  description: 'Use ONLY for JavaScript-heavy sites (Copart, IAAI, modern dealer/auction sites) or when normal fetch_page returns very little content. This uses a real browser.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
@@ -56,13 +56,13 @@ async function fetchPageText(url) {
   }
 }
 
-// Browserless fetch (headless browser)
+// Browserless fetch
 async function fetchPageWithBrowser(url) {
-  const browserlessKey = process.env.BROWSERLESS_API_KEY;
-  if (!browserlessKey) return 'BROWSERLESS_API_KEY not set';
+  const key = process.env.BROWSERLESS_API_KEY;
+  if (!key) return 'BROWSERLESS_API_KEY not set';
 
   try {
-    const response = await fetch(`https://chrome.browserless.io/content?token=${browserlessKey}`, {
+    const response = await fetch(`https://chrome.browserless.io/content?token=${key}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -88,7 +88,107 @@ async function fetchPageWithBrowser(url) {
   }
 }
 
-// ... (keep rawCall, textOf, call, agentLoop, extractJson, expandGoal exactly as before)
+async function rawCall(body) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error('ANTHROPIC_API_KEY is not set on the server.');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
+  let r;
+  try {
+    r = await fetch(API, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VERSION },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('Search timed out.');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error('Anthropic API ' + r.status + ': ' + t.slice(0, 600));
+  }
+  return await r.json();
+}
+
+function textOf(data) {
+  return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+}
+
+async function call(body) {
+  return textOf(await rawCall(body));
+}
+
+async function agentLoop(body) {
+  let messages = body.messages.slice();
+  let data;
+
+  for (let i = 0; i < MAX_STEPS; i++) {
+    data = await rawCall({ ...body, messages });
+    const stop = data.stop_reason;
+
+    if (stop === 'pause_turn') {
+      messages = messages.concat([{ role: 'assistant', content: data.content }]);
+      continue;
+    }
+
+    if (stop === 'tool_use') {
+      messages = messages.concat([{ role: 'assistant', content: data.content }]);
+      const results = [];
+
+      for (const b of data.content || []) {
+        if (b.type === 'tool_use') {
+          let out;
+          if (b.name === 'fetch_page') {
+            out = await fetchPageText(b.input.url);
+          } else if (b.name === 'fetch_page_browser') {
+            out = await fetchPageWithBrowser(b.input.url);
+          } else {
+            out = 'Unsupported tool: ' + b.name;
+          }
+          results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
+        }
+      }
+
+      messages = messages.concat([{ role: 'user', content: results.length ? results : 'Now output the final JSON array.' }]);
+      continue;
+    }
+
+    if (textOf(data)) return data;
+    messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now.' }]);
+  }
+
+  // Force final answer
+  const finalMessages = messages.concat([{
+    role: 'user',
+    content: 'Stop researching now. Output ONLY the final JSON array of listings.'
+  }]);
+  return await rawCall({ ...body, messages: finalMessages, tool_choice: { type: 'none' } });
+}
+
+function extractJson(text) {
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  let s = (fence ? fence[1] : text);
+  const start = s.search(/[[{]/);
+  if (start === -1) throw new Error('Model did not return JSON');
+  s = s.slice(start).replace(/[\x00-\x1F]+/g, ' ').trim();
+  try { return JSON.parse(s); } catch (e) {}
+  throw new Error('Could not parse JSON');
+}
+
+export async function expandGoal(goal) {
+  const system = 'You configure a search. Given a plain-language goal, output a JSON object with exactly these keys: "categories", "queries", and "rules". Respond with ONLY the JSON object.';
+  const text = await call({
+    model: MODEL,
+    max_tokens: 1200,
+    system,
+    messages: [{ role: 'user', content: 'Goal: ' + goal }]
+  });
+  return extractJson(text);
+}
 
 export async function runSearch(project, feedback) {
   const cfg = project.config || {};
@@ -97,12 +197,11 @@ export async function runSearch(project, feedback) {
 
   const system = `You are Parts Sniper — expert at finding real parts to repair damaged cars.
 
-Tool Usage Rules:
+Tool Usage:
 - Always try normal "fetch_page" first.
-- Only use "fetch_page_browser" when the site is JavaScript-heavy (Copart, IAAI, modern auction/dealer sites) or when normal fetch returns very little useful content.
-- Be efficient with browser calls as they are slower and more expensive.
+- Only use "fetch_page_browser" for JavaScript-heavy sites (Copart, IAAI, modern auction sites) or when normal fetch returns very little content.
 
-Follow the goal, categories, queries and rules. Output ONLY a JSON array of listings.`;
+Output ONLY a JSON array of listings.`;
 
   const parts = [
     'PROJECT GOAL: ' + project.goal,
@@ -111,7 +210,7 @@ Follow the goal, categories, queries and rules. Output ONLY a JSON array of list
     'RULES:\n- ' + (cfg.rules || []).join('\n- '),
     good.length ? 'GOOD EXAMPLES: ' + good.map(f => f.listing_url).join(', ') : '',
     bad.length ? 'AVOID: ' + bad.map(f => f.listing_url).join(', ') : '',
-    'Do deep research. Prefer normal fetch_page. Use fetch_page_browser only when necessary.'
+    'Do deep research. Prefer normal fetch_page. Use browser only when necessary.'
   ].filter(Boolean).join('\n\n');
 
   const data = await agentLoop({
@@ -121,9 +220,6 @@ Follow the goal, categories, queries and rules. Output ONLY a JSON array of list
     messages: [{ role: 'user', content: parts }],
     tools: [WEB_SEARCH_TOOL, FETCH_TOOL, FETCH_BROWSER_TOOL]
   });
-
-  // Handle tool results (you'll need to update the agentLoop slightly to support fetch_page_browser)
-  // For now, the logic stays similar — just add handling for the new tool name.
 
   const text = textOf(data);
   if (!text) throw new Error('Search returned no text');
