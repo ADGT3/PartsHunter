@@ -1,4 +1,4 @@
-/* Grok (xAI) — With automatic headless browser support */
+/* Grok (xAI) */
 import OpenAI from 'openai';
 
 const client = new OpenAI({
@@ -8,7 +8,6 @@ const client = new OpenAI({
 
 const MODEL = process.env.GROK_MODEL || 'grok-4.3';
 
-// Normal fetch (fast)
 async function fetchPageText(url) {
   if (!url || !/^https?:\/\//i.test(url)) return 'FETCH ERROR: invalid url';
   try {
@@ -17,24 +16,49 @@ async function fetchPageText(url) {
     const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
     clearTimeout(t);
     if (!r.ok) return 'FETCH ERROR ' + r.status + ' for ' + url;
+
     const html = await r.text();
-    const og = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]*content=["']([^"']+)["']/i);
-    const ogLine = og ? '\nOG_IMAGE: ' + og[1].replace(/&amp;/g, '&') : '';
+
+    let image = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+                html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+
+    if (!image) {
+      const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (jsonLdMatch) {
+        try {
+          const json = JSON.parse(jsonLdMatch[1]);
+          if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
+        } catch (e) {}
+      }
+    }
+
+    if (!image) {
+      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
+      for (const img of imgMatches) {
+        const src = img.match(/src=["']([^"']+)["']/)?.[1];
+        if (src && !src.includes('logo') && !src.includes('icon') && src.length > 30) {
+          image = src;
+          break;
+        }
+      }
+    }
+
+    const ogLine = image ? '\nOG_IMAGE: ' + image.replace(/&amp;/g, '&') : '';
     const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
                      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
                      .replace(/<[^>]+>/g, ' ')
                      .replace(/\s+/g, ' ')
                      .trim();
+
     return text.slice(0, 12000) + ogLine;
   } catch (e) {
     return 'FETCH ERROR: ' + String(e.message || e);
   }
 }
 
-// Headless browser fetch using Browserless
 async function fetchPageWithBrowser(url) {
   const key = process.env.BROWSERLESS_API_KEY;
-  if (!key) return 'BROWSERLESS_API_KEY is not set';
+  if (!key) return 'BROWSERLESS_API_KEY not set';
 
   try {
     const response = await fetch(`https://chrome.browserless.io/content?token=${key}`, {
@@ -42,10 +66,7 @@ async function fetchPageWithBrowser(url) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         url: url,
-        gotoOptions: {
-          waitUntil: 'networkidle2',
-          timeout: 30000
-        },
+        gotoOptions: { waitUntil: 'networkidle2', timeout: 30000 },
         waitFor: 1500
       })
     });
@@ -53,13 +74,38 @@ async function fetchPageWithBrowser(url) {
     if (!response.ok) return 'BROWSER FETCH ERROR: ' + response.status;
 
     const html = await response.text();
-    const og = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]*content=["']([^"']+)["']/i);
-    const ogLine = og ? '\nOG_IMAGE: ' + og[1].replace(/&amp;/g, '&') : '';
+
+    let image = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+                html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+
+    if (!image) {
+      const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (jsonLdMatch) {
+        try {
+          const json = JSON.parse(jsonLdMatch[1]);
+          if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
+        } catch (e) {}
+      }
+    }
+
+    if (!image) {
+      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
+      for (const img of imgMatches) {
+        const src = img.match(/src=["']([^"']+)["']/)?.[1];
+        if (src && !src.includes('logo') && !src.includes('icon') && src.length > 30) {
+          image = src;
+          break;
+        }
+      }
+    }
+
+    const ogLine = image ? '\nOG_IMAGE: ' + image.replace(/&amp;/g, '&') : '';
     const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
                      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
                      .replace(/<[^>]+>/g, ' ')
                      .replace(/\s+/g, ' ')
                      .trim();
+
     return text.slice(0, 12000) + ogLine;
   } catch (e) {
     return 'BROWSER FETCH ERROR: ' + e.message;
@@ -75,10 +121,6 @@ function extractJson(text) {
   try {
     return JSON.parse(s);
   } catch (e) {
-    const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
-    if (end > 0) {
-      try { return JSON.parse(s.slice(0, end + 1) + (s[0] === '[' ? ']' : '}')); } catch {}
-    }
     throw new Error('JSON parse failed');
   }
 }
@@ -88,11 +130,9 @@ export async function runGrokSearch(project, feedback) {
   const good = (feedback || []).filter(f => f.vote > 0).slice(0, 20);
   const bad = (feedback || []).filter(f => f.vote < 0).slice(0, 20);
 
-  const prompt = `You are Parts Sniper — expert at finding real parts to repair damaged cars.
+  const prompt = `You are Parts Sniper. Find real parts currently for sale to repair damaged cars.
 
-Tool Rules:
-- Prefer normal fetch first for speed.
-- Only use browser fetch for JavaScript-heavy sites (Copart, IAAI, modern auction/dealer sites) or when normal fetch gives very little content.
+Use browser fetch for JavaScript-heavy sites when needed.
 
 PROJECT GOAL: ${project.goal}
 
@@ -105,7 +145,7 @@ RULES: ${(cfg.rules || []).join('\n')}
 ${good.length ? 'GOOD EXAMPLES: ' + good.map(f => f.listing_url).join(', ') : ''}
 ${bad.length ? 'AVOID: ' + bad.map(f => f.listing_url).join(', ') : ''}
 
-Search aggressively and return ONLY a valid JSON array of current listings.`;
+Return ONLY a JSON array of current listings.`;
 
   try {
     const completion = await client.chat.completions.create({
@@ -115,10 +155,9 @@ Search aggressively and return ONLY a valid JSON array of current listings.`;
       temperature: 0.5,
     });
 
-    const content = completion.choices[0].message.content;
-    return extractJson(content);
+    return extractJson(completion.choices[0].message.content);
   } catch (error) {
-    console.error('Grok search error:', error);
+    console.error('Grok error:', error);
     return [];
   }
 }
