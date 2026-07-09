@@ -1,4 +1,4 @@
-/* Claude API helpers with automatic browser decision */
+/* Claude API helpers */
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
@@ -15,7 +15,7 @@ const WEB_SEARCH_TOOL = {
 
 const FETCH_TOOL = {
   name: 'fetch_page',
-  description: 'Fast normal HTTP fetch. Use this first for most sites.',
+  description: 'Fast normal fetch. Use this first.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
@@ -25,7 +25,7 @@ const FETCH_TOOL = {
 
 const FETCH_BROWSER_TOOL = {
   name: 'fetch_page_browser',
-  description: 'Use ONLY for JavaScript-heavy sites (Copart, IAAI, modern dealer/auction sites) or when normal fetch_page returns very little content. This uses a real browser.',
+  description: 'Use for JavaScript-heavy sites or when normal fetch returns poor results.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
@@ -33,7 +33,6 @@ const FETCH_BROWSER_TOOL = {
   }
 };
 
-// Normal fetch
 async function fetchPageText(url) {
   if (!url || !/^https?:\/\//i.test(url)) return 'FETCH ERROR: invalid url';
   try {
@@ -42,21 +41,46 @@ async function fetchPageText(url) {
     const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
     clearTimeout(t);
     if (!r.ok) return 'FETCH ERROR ' + r.status + ' for ' + url;
+
     const html = await r.text();
-    const og = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]*content=["']([^"']+)["']/i);
-    const ogLine = og ? '\nOG_IMAGE: ' + og[1].replace(/&amp;/g, '&') : '';
+
+    let image = html.match(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+                html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+
+    if (!image) {
+      const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (jsonLdMatch) {
+        try {
+          const json = JSON.parse(jsonLdMatch[1]);
+          if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
+        } catch (e) {}
+      }
+    }
+
+    if (!image) {
+      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
+      for (const img of imgMatches) {
+        const src = img.match(/src=["']([^"']+)["']/)?.[1];
+        if (src && !src.includes('logo') && !src.includes('icon') && src.length > 30) {
+          image = src;
+          break;
+        }
+      }
+    }
+
+    const ogLine = image ? '\nOG_IMAGE: ' + image.replace(/&amp;/g, '&') : '';
     const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
                      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
                      .replace(/<[^>]+>/g, ' ')
                      .replace(/\s+/g, ' ')
                      .trim();
+
     return text.slice(0, PAGE_CHARS) + ogLine;
   } catch (e) {
     return 'FETCH ERROR: ' + String(e.message || e);
   }
 }
 
-// Browserless fetch
 async function fetchPageWithBrowser(url) {
   const key = process.env.BROWSERLESS_API_KEY;
   if (!key) return 'BROWSERLESS_API_KEY not set';
@@ -75,13 +99,38 @@ async function fetchPageWithBrowser(url) {
     if (!response.ok) return 'BROWSER FETCH ERROR: ' + response.status;
 
     const html = await response.text();
-    const og = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]*content=["']([^"']+)["']/i);
-    const ogLine = og ? '\nOG_IMAGE: ' + og[1].replace(/&amp;/g, '&') : '';
+
+    let image = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+                html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+
+    if (!image) {
+      const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (jsonLdMatch) {
+        try {
+          const json = JSON.parse(jsonLdMatch[1]);
+          if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
+        } catch (e) {}
+      }
+    }
+
+    if (!image) {
+      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
+      for (const img of imgMatches) {
+        const src = img.match(/src=["']([^"']+)["']/)?.[1];
+        if (src && !src.includes('logo') && !src.includes('icon') && src.length > 30) {
+          image = src;
+          break;
+        }
+      }
+    }
+
+    const ogLine = image ? '\nOG_IMAGE: ' + image.replace(/&amp;/g, '&') : '';
     const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
                      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
                      .replace(/<[^>]+>/g, ' ')
                      .replace(/\s+/g, ' ')
                      .trim();
+
     return text.slice(0, PAGE_CHARS) + ogLine;
   } catch (e) {
     return 'BROWSER FETCH ERROR: ' + e.message;
@@ -147,7 +196,7 @@ async function agentLoop(body) {
           } else if (b.name === 'fetch_page_browser') {
             out = await fetchPageWithBrowser(b.input.url);
           } else {
-            out = 'Unsupported tool: ' + b.name;
+            out = 'Unsupported tool';
           }
           results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
         }
@@ -161,7 +210,6 @@ async function agentLoop(body) {
     messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now.' }]);
   }
 
-  // Force final answer
   const finalMessages = messages.concat([{
     role: 'user',
     content: 'Stop researching now. Output ONLY the final JSON array of listings.'
@@ -198,8 +246,8 @@ export async function runSearch(project, feedback) {
   const system = `You are Parts Sniper — expert at finding real parts to repair damaged cars.
 
 Tool Usage:
-- Always try normal "fetch_page" first.
-- Only use "fetch_page_browser" for JavaScript-heavy sites (Copart, IAAI, modern auction sites) or when normal fetch returns very little content.
+- Prefer normal "fetch_page" first.
+- Only use "fetch_page_browser" for JavaScript-heavy sites or when normal fetch returns very little content.
 
 Output ONLY a JSON array of listings.`;
 
