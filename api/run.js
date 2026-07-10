@@ -27,32 +27,51 @@ function normalizeUrl(url) {
   if (!url) return '';
   let u = url.toLowerCase().trim();
   u = u.replace(/^https?:\/\//, '').replace(/^www\./, '');
-  u = u.split('?')[0];
+  u = u.split('#')[0].split('?')[0];
   u = u.replace(/\/$/, '');
-  u = u.replace(/en-au\//, '');
+  u = u.replace(/\/en-au\//, '/').replace(/\/en\//, '/');
   return u;
 }
 
+function normTitle(t) {
+  return (t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Dedupe by URL AND by title (catches the same item listed on multiple sites).
+// Claude is added first so it keeps priority; Grok only fills gaps.
 function mergeAndDeduplicate(claude = [], grok = []) {
-  const map = new Map();
+  const byUrl = new Map();
+  const byTitle = new Map();
 
-  claude.forEach(l => {
-    const key = normalizeUrl(l.url);
-    if (key) map.set(key, { ...l, source: 'claude' });
-  });
+  const add = (l, source) => {
+    const urlKey = normalizeUrl(l.url);
+    if (!urlKey) return;
+    const titleKey = normTitle(l.title);
 
-  grok.forEach(l => {
-    const key = normalizeUrl(l.url);
-    if (!key) return;
-    const existing = map.get(key);
-    if (!existing) {
-      map.set(key, { ...l, source: 'grok' });
-    } else if (!existing.image && l.image) {
-      map.set(key, { ...existing, image: l.image, source: 'hybrid' });
+    if (byUrl.has(urlKey)) {
+      const ex = byUrl.get(urlKey);
+      if (!ex.image && l.image) { ex.image = l.image; if (ex.source !== source) ex.source = 'hybrid'; }
+      return;
     }
-  });
+    if (titleKey && byTitle.has(titleKey)) {
+      const ex = byTitle.get(titleKey);
+      if (!ex.image && l.image) ex.image = l.image;
+      return;
+    }
+    const item = { ...l, source };
+    byUrl.set(urlKey, item);
+    if (titleKey) byTitle.set(titleKey, item);
+  };
 
-  return Array.from(map.values());
+  claude.forEach(l => add(l, 'claude'));
+  grok.forEach(l => add(l, 'grok'));
+  return Array.from(byUrl.values());
+}
+
+// Drop listings that are clearly no longer available.
+const SOLD_RE = /\b(sold|ended|no longer available|withdrawn|expired|unavailable|out of stock)\b/i;
+function dropSold(listings) {
+  return listings.filter(l => !SOLD_RE.test((l.title || '') + ' | ' + (l.condition || '')));
 }
 
 export default async function handler(req, res) {
@@ -95,7 +114,7 @@ export default async function handler(req, res) {
 
     [claudeListings, grokListings] = await Promise.all([claudePromise, grokPromise]);
 
-    let listings = mergeAndDeduplicate(claudeListings, grokListings);
+    let listings = dropSold(mergeAndDeduplicate(claudeListings, grokListings));
 
     console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
 
