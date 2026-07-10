@@ -144,34 +144,47 @@ async function smartFetch(url) {
   return normal;
 }
 
+const MAX_RETRIES = Number(process.env.ANTHROPIC_MAX_RETRIES || 5);
+
 async function rawCall(body) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set on the server.');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
-  let r;
   try {
-    r = await fetch(API, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': VERSION
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-  } catch (e) {
-    if (e && e.name === 'AbortError') throw new Error('Search timed out.');
-    throw e;
+    for (let attempt = 0; ; attempt++) {
+      let r;
+      try {
+        r = await fetch(API, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': VERSION
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw new Error('Search timed out.');
+        throw e;
+      }
+      if (r.ok) return await r.json();
+
+      const errText = await r.text();
+      // 429 = rate limited, 529 = overloaded, 5xx = transient server errors — back off and retry.
+      const retryable = r.status === 429 || r.status === 529 || (r.status >= 500 && r.status < 600);
+      if (retryable && attempt < MAX_RETRIES) {
+        const wait = Math.min(1500 * Math.pow(2, attempt), 20000);
+        console.warn(`Anthropic ${r.status} (attempt ${attempt + 1}/${MAX_RETRIES + 1}) — retrying in ${wait}ms`);
+        await new Promise((res) => setTimeout(res, wait));
+        continue;
+      }
+      throw new Error('Anthropic API ' + r.status + ': ' + errText.slice(0, 600));
+    }
   } finally {
     clearTimeout(timer);
   }
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error('Anthropic API ' + r.status + ': ' + t.slice(0, 600));
-  }
-  return await r.json();
 }
 
 function textOf(data) {
