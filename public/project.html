@@ -93,8 +93,11 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.getElementById('cQueries').value = (cfg.queries || []).join('\n');
     document.getElementById('cRules').value = (cfg.rules || []).join('\n');
 
-    const cats = (cfg.categories && cfg.categories.length) ? cfg.categories : [...new Set(state.listings.map((l) => l.section))];
-    const bySec = {}; state.listings.forEach((l) => (bySec[l.section] = bySec[l.section] || []).push(l));
+    // Group listings by their section, then show config categories first followed by
+    // ANY other section that actually has listings — so no result is ever hidden.
+    const bySec = {}; state.listings.forEach((l) => { const s = l.section || 'Results'; (bySec[s] = bySec[s] || []).push(l); });
+    const cats = [...((cfg.categories && cfg.categories.length) ? cfg.categories : [])];
+    Object.keys(bySec).forEach((s) => { if (!cats.includes(s)) cats.push(s); });
 
     const out = document.getElementById('results');
     if (!state.listings.length) {
