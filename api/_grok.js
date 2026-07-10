@@ -50,7 +50,9 @@ RULES: ${(cfg.rules || []).join('\n')}
 ${good.length ? 'GOOD EXAMPLES (find similar real listings): ' + good.map(f => f.listing_url).join(', ') : ''}
 ${bad.length ? 'AVOID: ' + bad.map(f => f.listing_url).join(', ') : ''}
 
-Return ONLY a valid JSON array of real current listings. Each item must have a real working "url". If you have no real results for a section, omit it.`;
+Each listing's "section" MUST be EXACTLY one of the CATEGORIES listed above (copy the category text verbatim) — do not invent new section names; if a listing does not neatly fit, pick the closest category.
+
+Return ONLY a valid JSON array of real current listings. Each item must have a real working "url".`;
 
   try {
     const completion = await client.chat.completions.create({
