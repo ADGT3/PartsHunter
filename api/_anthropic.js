@@ -249,15 +249,21 @@ function extractJson(text) {
   const start = s.search(/[[{]/);
   if (start === -1) throw new Error('Model did not return JSON. Start: ' + text.slice(0, 200));
   s = s.slice(start).replace(/[\x00-\x1F]+/g, ' ').trim();
-  try {
-    return JSON.parse(s);
-  } catch (e) {
-    const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
-    if (end > 0) {
-      try { return JSON.parse(s.slice(0, end + 1)); } catch {}
-    }
-    throw new Error('Could not parse model JSON');
+
+  const candidates = [s];
+  // Slice to the last closing bracket.
+  const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
+  if (end > 0) candidates.push(s.slice(0, end + 1));
+  // Truncation repair: if it's an array cut off mid-object, keep up to the last
+  // COMPLETE object, drop any trailing comma, and re-close the array.
+  if (s[0] === '[') {
+    const lastObj = s.lastIndexOf('}');
+    if (lastObj > 0) candidates.push(s.slice(0, lastObj + 1).replace(/,\s*$/, '') + ']');
   }
+  for (const c of candidates) {
+    try { return JSON.parse(c); } catch (e) { /* try next */ }
+  }
+  throw new Error('Could not parse model JSON. Start: ' + s.slice(0, 200));
 }
 
 export async function expandGoal(goal) {
@@ -320,7 +326,7 @@ Tool rules:
 
   const data = await agentLoop({
     model: SEARCH_MODEL,
-    max_tokens: 12000,
+    max_tokens: 16000,
     system,
     messages: [{ role: 'user', content: parts }],
     tools: [WEB_SEARCH_TOOL, FETCH_TOOL, FETCH_BROWSER_TOOL]
