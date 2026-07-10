@@ -1,57 +1,79 @@
-import { sql, ensureSchema, readBody } from './_db.js';
+import { sql, ensureSchema, readBody, uid } from './_db.js';
 import { requireAuth } from './_auth.js';
+import { expandGoal } from './_anthropic.js';
 
 export default async function handler(req, res) {
   try {
     await ensureSchema();
     if (!requireAuth(req, res)) return;
 
-    const id = req.query.id;
-    if (!id) return res.status(400).json({ error: 'id required' });
+    const id = req.query?.id || (await readBody(req)).id;
 
     if (req.method === 'GET') {
-      const { rows: pr } = await sql`SELECT * FROM projects WHERE id = ${id}`;
-      if (!pr.length) return res.status(404).json({ error: 'not found' });
-      const project = pr[0];
-      const { rows: lastRun } = await sql`SELECT id, created_at FROM runs WHERE project_id = ${id} ORDER BY created_at DESC LIMIT 1`;
-      let listings = [];
-      if (lastRun.length) {
-        const r = await sql`SELECT * FROM listings WHERE run_id = ${lastRun[0].id} ORDER BY section, created_at`;
-        listings = r.rows;
+      if (!id) return res.status(400).json({ error: 'id required' });
+
+      const { rows } = await sql`SELECT * FROM projects WHERE id = ${id}`;
+      if (!rows.length) return res.status(404).json({ error: 'project not found' });
+
+      let project = rows[0];
+      let config = project.config || {};
+
+      // If config is empty, expand it automatically and save it
+      if (!config.queries || config.queries.length === 0) {
+        try {
+          const expanded = await expandGoal(project.goal);
+          config = {
+            categories: expanded.categories || [],
+            queries: expanded.queries || [],
+            rules: expanded.rules || []
+          };
+
+          await sql`UPDATE projects SET config = ${JSON.stringify(config)}::jsonb WHERE id = ${id}`;
+          project.config = config;
+          console.log('Auto-expanded config for project', id);
+        } catch (e) {
+          console.error('Auto-expand failed:', e.message);
+        }
       }
-      const { rows: fb } = await sql`SELECT listing_url, vote FROM feedback WHERE project_id = ${id}`;
-      const { rows: runs } = await sql`SELECT id, created_at, listing_count FROM runs WHERE project_id = ${id} ORDER BY created_at DESC LIMIT 20`;
+
+      // Also load listings + feedback
+      const { rows: listings } = await sql`
+        SELECT * FROM listings 
+        WHERE project_id = ${id} 
+        ORDER BY section, created_at DESC
+      `;
+      const { rows: feedback } = await sql`
+        SELECT * FROM feedback WHERE project_id = ${id}
+      `;
+
       return res.status(200).json({
         project,
-        lastRunAt: lastRun[0]?.created_at || null,
         listings,
-        feedback: fb,
-        runs
+        feedback
       });
     }
 
     if (req.method === 'PATCH') {
       const body = await readBody(req);
-      const fields = [];
-      if (body.name != null) { await sql`UPDATE projects SET name = ${String(body.name)} WHERE id = ${id}`; fields.push('name'); }
-      if (body.goal != null) { await sql`UPDATE projects SET goal = ${String(body.goal)} WHERE id = ${id}`; fields.push('goal'); }
-      if (body.schedule !== undefined) { await sql`UPDATE projects SET schedule = ${body.schedule || null} WHERE id = ${id}`; fields.push('schedule'); }
-      if (body.config != null) {
-        const cfg = typeof body.config === 'string' ? JSON.parse(body.config) : body.config;
-        await sql`UPDATE projects SET config = ${JSON.stringify(cfg)}::jsonb WHERE id = ${id}`;
-        fields.push('config');
-      }
-      const { rows } = await sql`SELECT * FROM projects WHERE id = ${id}`;
-      return res.status(200).json({ project: rows[0], updated: fields });
-    }
+      if (!id) return res.status(400).json({ error: 'id required' });
 
-    if (req.method === 'DELETE') {
-      await sql`DELETE FROM projects WHERE id = ${id}`;
-      return res.status(200).json({ deleted: true });
+      if (body.config) {
+        await sql`UPDATE projects SET config = ${JSON.stringify(body.config)}::jsonb WHERE id = ${id}`;
+      }
+      if (body.name) {
+        await sql`UPDATE projects SET name = ${body.name} WHERE id = ${id}`;
+      }
+      if (body.goal) {
+        await sql`UPDATE projects SET goal = ${body.goal} WHERE id = ${id}`;
+      }
+
+      const { rows } = await sql`SELECT * FROM projects WHERE id = ${id}`;
+      return res.status(200).json({ project: rows[0] });
     }
 
     res.status(405).json({ error: 'method not allowed' });
   } catch (e) {
+    console.error('project handler error:', e);
     res.status(500).json({ error: String(e.message || e) });
   }
 }
