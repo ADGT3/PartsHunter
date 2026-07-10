@@ -78,14 +78,18 @@ export default async function handler(req, res) {
 
     let claudeListings = [];
     let grokListings = [];
+    let claudeErr = null;
+    let grokErr = null;
 
     const claudePromise = runSearch(project, fb).catch(e => {
-      console.error('Claude failed:', e.message);
+      claudeErr = (e && e.message) ? e.message : String(e);
+      console.error('Claude failed:', claudeErr);
       return [];
     });
 
     const grokPromise = runGrokSearch(project, fb).catch(e => {
-      console.error('Grok failed:', e.message);
+      grokErr = (e && e.message) ? e.message : String(e);
+      console.error('Grok failed:', grokErr);
       return [];
     });
 
@@ -96,7 +100,9 @@ export default async function handler(req, res) {
     console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
 
     if (listings.length === 0) {
-      return res.status(502).json({ error: 'No results from either provider.' });
+      const detail = 'Claude: ' + (claudeErr ? ('ERROR — ' + claudeErr) : (claudeListings.length + ' returned')) +
+                     ' | Grok: ' + (grokErr ? ('ERROR — ' + grokErr) : (grokListings.length + ' returned'));
+      return res.status(502).json({ error: 'No results. ' + detail });
     }
 
     // Enrich images (first 40)
