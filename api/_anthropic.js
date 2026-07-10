@@ -1,4 +1,4 @@
-/* Claude API helpers */
+/* Claude API helpers - Automatic browser fallback + improved image extraction */
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
@@ -15,7 +15,7 @@ const WEB_SEARCH_TOOL = {
 
 const FETCH_TOOL = {
   name: 'fetch_page',
-  description: 'Fast normal fetch. Use this first.',
+  description: 'Fast normal fetch. Use this first for most sites.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
@@ -25,7 +25,7 @@ const FETCH_TOOL = {
 
 const FETCH_BROWSER_TOOL = {
   name: 'fetch_page_browser',
-  description: 'Use for JavaScript-heavy sites or when normal fetch returns poor results.',
+  description: 'Use only when normal fetch returns very little content or for known JS-heavy sites.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
@@ -33,47 +33,67 @@ const FETCH_BROWSER_TOOL = {
   }
 };
 
+function isPoorContent(text) {
+  if (!text || text.startsWith('FETCH ERROR') || text.startsWith('BROWSER')) return true;
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length < 800) return true;
+  if (/loading|please enable javascript|enable js|javascript is required/i.test(clean)) return true;
+  return false;
+}
+
+async function extractImage(html) {
+  let image = html.match(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+              html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+
+  if (!image) {
+    const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+    if (jsonLdMatch) {
+      try {
+        const json = JSON.parse(jsonLdMatch[1]);
+        if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
+        if (!image && json['@graph']) {
+          const product = json['@graph'].find(item => item['@type']?.includes('Product'));
+          if (product?.image) image = Array.isArray(product.image) ? product.image[0] : product.image;
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (!image) {
+    const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
+    for (const img of imgMatches) {
+      const src = img.match(/src=["']([^"']+)["']/)?.[1];
+      if (src && !/logo|icon|sprite|placeholder|avatar|spinner/i.test(src) && src.length > 40) {
+        image = src;
+        break;
+      }
+    }
+  }
+
+  return image ? image.replace(/&amp;/g, '&') : '';
+}
+
 async function fetchPageText(url) {
   if (!url || !/^https?:\/\//i.test(url)) return 'FETCH ERROR: invalid url';
   try {
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), 13000);
-    const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
+    const r = await fetch(url, {
+      signal: c.signal,
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' }
+    });
     clearTimeout(t);
     if (!r.ok) return 'FETCH ERROR ' + r.status + ' for ' + url;
 
     const html = await r.text();
-
-    let image = html.match(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
-                html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
-
-    if (!image) {
-      const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
-      if (jsonLdMatch) {
-        try {
-          const json = JSON.parse(jsonLdMatch[1]);
-          if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
-        } catch (e) {}
-      }
-    }
-
-    if (!image) {
-      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
-      for (const img of imgMatches) {
-        const src = img.match(/src=["']([^"']+)["']/)?.[1];
-        if (src && !src.includes('logo') && !src.includes('icon') && src.length > 30) {
-          image = src;
-          break;
-        }
-      }
-    }
-
-    const ogLine = image ? '\nOG_IMAGE: ' + image.replace(/&amp;/g, '&') : '';
-    const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
-                     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-                     .replace(/<[^>]+>/g, ' ')
-                     .replace(/\s+/g, ' ')
-                     .trim();
+    const image = await extractImage(html);
+    const ogLine = image ? '\nOG_IMAGE: ' + image : '';
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     return text.slice(0, PAGE_CHARS) + ogLine;
   } catch (e) {
@@ -92,49 +112,36 @@ async function fetchPageWithBrowser(url) {
       body: JSON.stringify({
         url: url,
         gotoOptions: { waitUntil: 'networkidle2', timeout: 30000 },
-        waitFor: 1500
+        waitFor: 2000
       })
     });
 
     if (!response.ok) return 'BROWSER FETCH ERROR: ' + response.status;
 
     const html = await response.text();
-
-    let image = html.match(/<meta[^>]+property=["']og:image[^"']*["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
-                html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
-
-    if (!image) {
-      const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
-      if (jsonLdMatch) {
-        try {
-          const json = JSON.parse(jsonLdMatch[1]);
-          if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
-        } catch (e) {}
-      }
-    }
-
-    if (!image) {
-      const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
-      for (const img of imgMatches) {
-        const src = img.match(/src=["']([^"']+)["']/)?.[1];
-        if (src && !src.includes('logo') && !src.includes('icon') && src.length > 30) {
-          image = src;
-          break;
-        }
-      }
-    }
-
-    const ogLine = image ? '\nOG_IMAGE: ' + image.replace(/&amp;/g, '&') : '';
-    const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
-                     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-                     .replace(/<[^>]+>/g, ' ')
-                     .replace(/\s+/g, ' ')
-                     .trim();
+    const image = await extractImage(html);
+    const ogLine = image ? '\nOG_IMAGE: ' + image : '';
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     return text.slice(0, PAGE_CHARS) + ogLine;
   } catch (e) {
     return 'BROWSER FETCH ERROR: ' + e.message;
   }
+}
+
+// Automatic fallback: normal first, then browser if poor
+async function smartFetch(url) {
+  const normal = await fetchPageText(url);
+  if (isPoorContent(normal)) {
+    console.log('Poor content from normal fetch, trying browser for:', url);
+    return await fetchPageWithBrowser(url);
+  }
+  return normal;
 }
 
 async function rawCall(body) {
@@ -146,7 +153,11 @@ async function rawCall(body) {
   try {
     r = await fetch(API, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VERSION },
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': VERSION
+      },
       body: JSON.stringify(body),
       signal: controller.signal
     });
@@ -191,18 +202,20 @@ async function agentLoop(body) {
       for (const b of data.content || []) {
         if (b.type === 'tool_use') {
           let out;
-          if (b.name === 'fetch_page') {
-            out = await fetchPageText(b.input.url);
-          } else if (b.name === 'fetch_page_browser') {
-            out = await fetchPageWithBrowser(b.input.url);
+          if (b.name === 'fetch_page' || b.name === 'fetch_page_browser') {
+            // Use smartFetch which does automatic fallback
+            out = await smartFetch(b.input?.url || '');
           } else {
-            out = 'Unsupported tool';
+            out = 'Unsupported tool: ' + b.name;
           }
           results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
         }
       }
 
-      messages = messages.concat([{ role: 'user', content: results.length ? results : 'Now output the final JSON array.' }]);
+      messages = messages.concat([{
+        role: 'user',
+        content: results.length ? results : 'Now output the final JSON array of listings.'
+      }]);
       continue;
     }
 
@@ -212,7 +225,7 @@ async function agentLoop(body) {
 
   const finalMessages = messages.concat([{
     role: 'user',
-    content: 'Stop researching now. Output ONLY the final JSON array of listings.'
+    content: 'Stop researching now. Output ONLY the final JSON array of listings. No prose.'
   }]);
   return await rawCall({ ...body, messages: finalMessages, tool_choice: { type: 'none' } });
 }
@@ -221,17 +234,30 @@ function extractJson(text) {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   let s = (fence ? fence[1] : text);
   const start = s.search(/[[{]/);
-  if (start === -1) throw new Error('Model did not return JSON');
+  if (start === -1) throw new Error('Model did not return JSON. Start: ' + text.slice(0, 200));
   s = s.slice(start).replace(/[\x00-\x1F]+/g, ' ').trim();
-  try { return JSON.parse(s); } catch (e) {}
-  throw new Error('Could not parse JSON');
+  try {
+    return JSON.parse(s);
+  } catch (e) {
+    const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
+    if (end > 0) {
+      try { return JSON.parse(s.slice(0, end + 1)); } catch {}
+    }
+    throw new Error('Could not parse model JSON');
+  }
 }
 
 export async function expandGoal(goal) {
-  const system = 'You configure a search. Given a plain-language goal, output a JSON object with exactly these keys: "categories", "queries", and "rules". Respond with ONLY the JSON object.';
+  const system = `You configure a parts search for repairing a damaged car.
+Given a plain-language goal, output a JSON object with exactly these keys:
+- "categories": array of 3-6 short section names to group results
+- "queries": array of 8-12 strong web search queries (include OEM part numbers if possible, salvage, Copart, IAAI, etc.)
+- "rules": array of short guardrail strings (only constraints implied by the goal)
+
+Respond with ONLY the JSON object, no prose.`;
   const text = await call({
     model: MODEL,
-    max_tokens: 1200,
+    max_tokens: 1500,
     system,
     messages: [{ role: 'user', content: 'Goal: ' + goal }]
   });
@@ -243,22 +269,39 @@ export async function runSearch(project, feedback) {
   const good = (feedback || []).filter((f) => f.vote > 0).slice(0, 25);
   const bad = (feedback || []).filter((f) => f.vote < 0).slice(0, 25);
 
-  const system = `You are Parts Sniper — expert at finding real parts to repair damaged cars.
+  // If config is empty, expand on the fly
+  let categories = cfg.categories || [];
+  let queries = cfg.queries || [];
+  let rules = cfg.rules || [];
 
-Tool Usage:
-- Prefer normal "fetch_page" first.
-- Only use "fetch_page_browser" for JavaScript-heavy sites or when normal fetch returns very little content.
+  if (queries.length === 0) {
+    try {
+      const expanded = await expandGoal(project.goal);
+      categories = expanded.categories || categories;
+      queries = expanded.queries || queries;
+      rules = expanded.rules || rules;
+    } catch (e) {
+      console.error('On-the-fly expand failed:', e.message);
+    }
+  }
 
-Output ONLY a JSON array of listings.`;
+  const system = `You are Parts Sniper — expert at finding real OEM and salvage parts for damaged cars.
+
+Tool rules:
+- Prefer normal fetch_page first.
+- The system will automatically upgrade to browser when the page is JavaScript-heavy.
+- Focus hard on salvage/auction sources (Copart, IAAI, etc.) when relevant to the goal.
+- Extract accurate price, condition, seller, and image for every listing.
+- Output ONLY a JSON array of listings. Never fabricate.`;
 
   const parts = [
     'PROJECT GOAL: ' + project.goal,
-    'CATEGORIES: ' + (cfg.categories || []).join(' | '),
-    'SEARCH QUERIES:\n- ' + (cfg.queries || []).join('\n- '),
-    'RULES:\n- ' + (cfg.rules || []).join('\n- '),
-    good.length ? 'GOOD EXAMPLES: ' + good.map(f => f.listing_url).join(', ') : '',
-    bad.length ? 'AVOID: ' + bad.map(f => f.listing_url).join(', ') : '',
-    'Do deep research. Prefer normal fetch_page. Use browser only when necessary.'
+    'CATEGORIES: ' + categories.join(' | '),
+    'SEARCH QUERIES:\n- ' + queries.join('\n- '),
+    'RULES:\n- ' + rules.join('\n- '),
+    good.length ? 'GOOD EXAMPLES (find similar):\n- ' + good.map(f => f.listing_url).join('\n- ') : '',
+    bad.length ? 'AVOID similar to:\n- ' + bad.map(f => f.listing_url).join('\n- ') : '',
+    'Do deep research now. Prioritise real current listings and salvage vehicles when relevant. Return ONLY the JSON array.'
   ].filter(Boolean).join('\n\n');
 
   const data = await agentLoop({
