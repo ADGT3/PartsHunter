@@ -292,6 +292,7 @@ Tool rules:
 - The system will automatically upgrade to browser when the page is JavaScript-heavy.
 - Focus hard on salvage/auction sources (Copart, IAAI, etc.) when relevant to the goal.
 - Extract accurate price, condition, seller, and image for every listing.
+- Every listing's "section" MUST be EXACTLY one of the CATEGORIES provided below (copy the category text verbatim). Do not invent new section names; if a listing does not neatly fit, choose the closest category.
 - Output ONLY a JSON array of listings. Never fabricate.`;
 
   const parts = [
