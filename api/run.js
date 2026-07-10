@@ -27,22 +27,20 @@ function normalizeUrl(url) {
   if (!url) return '';
   let u = url.toLowerCase().trim();
   u = u.replace(/^https?:\/\//, '').replace(/^www\./, '');
-  u = u.split('?')[0];           // remove query string (this catches the ?variant= case)
-  u = u.replace(/\/$/, '');      // remove trailing slash
-  u = u.replace(/en-au\//, '');  // remove language prefix
+  u = u.split('?')[0];
+  u = u.replace(/\/$/, '');
+  u = u.replace(/en-au\//, '');
   return u;
 }
 
 function mergeAndDeduplicate(claude = [], grok = []) {
   const map = new Map();
 
-  // Claude first (priority)
   claude.forEach(l => {
     const key = normalizeUrl(l.url);
     if (key) map.set(key, { ...l, source: 'claude' });
   });
 
-  // Grok only if new or adds value
   grok.forEach(l => {
     const key = normalizeUrl(l.url);
     if (!key) return;
@@ -93,7 +91,7 @@ export default async function handler(req, res) {
 
     [claudeListings, grokListings] = await Promise.all([claudePromise, grokPromise]);
 
-    const listings = mergeAndDeduplicate(claudeListings, grokListings);
+    let listings = mergeAndDeduplicate(claudeListings, grokListings);
 
     console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
 
@@ -101,25 +99,59 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'No results from either provider.' });
     }
 
+    // Enrich images (first 40)
     await Promise.allSettled(
-      listings.slice(0, 30).map(async (l) => {
-        if (!l.image && l.url) l.image = await ogImage(l.url);
+      listings.slice(0, 40).map(async (l) => {
+        if (!l.image && l.url) {
+          l.image = await ogImage(l.url);
+        }
       })
     );
 
     const runId = uid();
-    await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'Hybrid run')`;
+    await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'Hybrid Claude + Grok')`;
 
+    // Insert all listings
     for (const l of listings) {
       const badges = Array.isArray(l.badges) ? l.badges : [];
       await sql`INSERT INTO listings (id, project_id, run_id, section, title, description, price, price_num, currency, condition, seller, url, image, badges, source)
-        VALUES (${uid()}, ${projectId}, ${runId}, ${l.section || 'Results'}, ${l.title || ''}, ${l.description || ''}, ${l.price || ''}, ${parsePriceNum(l.price)}, ${l.currency || 'USD'}, ${l.condition || ''}, ${l.seller || 'Other'}, ${l.url || ''}, ${l.image || ''}, ${JSON.stringify(badges)}::jsonb, ${l.source || 'unknown'})`;
+        VALUES (
+          ${uid()},
+          ${projectId},
+          ${runId},
+          ${l.section || 'Results'},
+          ${l.title || ''},
+          ${l.description || ''},
+          ${l.price || ''},
+          ${parsePriceNum(l.price)},
+          ${l.currency || 'USD'},
+          ${l.condition || ''},
+          ${l.seller || 'Other'},
+          ${l.url || ''},
+          ${l.image || ''},
+          ${JSON.stringify(badges)}::jsonb,
+          ${l.source || 'unknown'}
+        )`;
     }
 
     await sql`UPDATE projects SET run_count = run_count + 1, last_run_at = now() WHERE id = ${projectId}`;
 
-    const r = await sql`SELECT * FROM listings WHERE run_id = ${runId} ORDER BY section, created_at`;
-    return res.status(200).json({ runId, count: listings.length, listings: r.rows });
+    // IMPORTANT: Return the in-memory listings so the UI always has them
+    // (avoids any SELECT timing / visibility issues)
+    const responseListings = listings.map(l => ({
+      ...l,
+      id: uid(), // temporary client-side id
+      project_id: projectId,
+      run_id: runId
+    }));
+
+    console.log(`Returning ${responseListings.length} listings to client`);
+
+    return res.status(200).json({
+      runId,
+      count: listings.length,
+      listings: responseListings
+    });
 
   } catch (e) {
     console.error('Run handler error:', e);
