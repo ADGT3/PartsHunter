@@ -38,8 +38,8 @@ function normTitle(t) {
 }
 
 // Dedupe by URL AND by title (catches the same item listed on multiple sites).
-// Claude is added first so it keeps priority; Grok only fills gaps.
-function mergeAndDeduplicate(claude = [], grok = []) {
+// Existing (already-saved) listings are added first so they persist; then Claude, then Grok.
+function mergeAndDeduplicate(existing = [], claude = [], grok = []) {
   const byUrl = new Map();
   const byTitle = new Map();
 
@@ -63,6 +63,7 @@ function mergeAndDeduplicate(claude = [], grok = []) {
     if (titleKey) byTitle.set(titleKey, item);
   };
 
+  existing.forEach(l => add(l, l.source || 'unknown'));
   claude.forEach(l => add(l, 'claude'));
   grok.forEach(l => add(l, 'grok'));
   return Array.from(byUrl.values());
@@ -72,6 +73,16 @@ function mergeAndDeduplicate(claude = [], grok = []) {
 const SOLD_RE = /\b(sold|ended|no longer available|withdrawn|expired|unavailable|out of stock)\b/i;
 function dropSold(listings) {
   return listings.filter(l => !SOLD_RE.test((l.title || '') + ' | ' + (l.condition || '')));
+}
+
+// Drop non-listing junk: forum threads, social, wiki, video — and fabricated/reported prices.
+const JUNK_URL_RE = /(reddit\.com|youtube\.com|youtu\.be|wikipedia\.org|facebook\.com|twitter\.com|x\.com|instagram\.com|911uk\.com|\/threads?\/|showthread|viewtopic|\/wiki\/)/i;
+function dropJunk(listings) {
+  return listings.filter(l => {
+    if (JUNK_URL_RE.test(l.url || '')) return false;
+    if (/reported|at time of|forum/i.test(l.price || '')) return false;
+    return true;
+  });
 }
 
 export default async function handler(req, res) {
@@ -114,7 +125,14 @@ export default async function handler(req, res) {
 
     [claudeListings, grokListings] = await Promise.all([claudePromise, grokPromise]);
 
-    let listings = dropSold(mergeAndDeduplicate(claudeListings, grokListings));
+    // Accumulate: merge new results with what we already have, drop junk/sold, and
+    // remove anything the user has thumbed-down.
+    const { rows: existingRows } = await sql`SELECT section, title, description, price, currency, condition, seller, url, image, badges, source FROM listings WHERE project_id = ${projectId}`;
+    const existing = existingRows.map(r => ({ ...r, badges: Array.isArray(r.badges) ? r.badges : [] }));
+    const downvoted = new Set((fb || []).filter(f => f.vote < 0).map(f => normalizeUrl(f.listing_url)));
+
+    let listings = dropJunk(dropSold(mergeAndDeduplicate(existing, claudeListings, grokListings)))
+      .filter(l => !downvoted.has(normalizeUrl(l.url)));
 
     console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
 
@@ -135,6 +153,9 @@ export default async function handler(req, res) {
 
     const runId = uid();
     await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'Hybrid Claude + Grok')`;
+
+    // Replace this project's listings with the merged, cleaned set.
+    await sql`DELETE FROM listings WHERE project_id = ${projectId}`;
 
     // Insert all listings
     for (const l of listings) {
