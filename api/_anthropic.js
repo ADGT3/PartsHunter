@@ -5,6 +5,8 @@ const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const SEARCH_MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
 const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS || 280000);
 const MAX_STEPS = Number(process.env.SEARCH_MAX_STEPS || 14);
+const MAX_BROWSER_FETCHES = Number(process.env.MAX_BROWSER_FETCHES || 5);
+let browserBudget = MAX_BROWSER_FETCHES; // reset each run; caps slow headless renders
 const PAGE_CHARS = Number(process.env.FETCH_PAGE_CHARS || 12000);
 
 const WEB_SEARCH_TOOL = {
@@ -139,6 +141,8 @@ async function fetchPageWithBrowser(url) {
 async function smartFetch(url) {
   const normal = await fetchPageText(url);
   if (isPoorContent(normal)) {
+    if (browserBudget <= 0) return normal; // headless-render cap reached this run
+    browserBudget--;
     console.log('Poor content from normal fetch, trying browser for:', url);
     return await fetchPageWithBrowser(url);
   }
@@ -285,6 +289,7 @@ Respond with ONLY the JSON object, no prose.`;
 }
 
 export async function runSearch(project, feedback) {
+  browserBudget = MAX_BROWSER_FETCHES;
   const cfg = project.config || {};
   const good = (feedback || []).filter((f) => f.vote > 0).slice(0, 25);
   const bad = (feedback || []).filter((f) => f.vote < 0).slice(0, 25);

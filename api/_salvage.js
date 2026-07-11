@@ -1,23 +1,26 @@
 /* Salvage / auction search — verified sources (Jul 2026).
  *
- * Fetch strategy per site (verified against live behaviour + Vercel trace):
- *   Pickles (AU)    mode 'plain'   — server-rendered, plain fetch. RHD.
- *   Manheim (AU)    mode 'render'  — JS results, Browserless /content. RHD.
- *   Carfast         mode 'unblock' — Cloudflare blocks datacenter IPs (403);
- *   IAAI            mode 'unblock'   needs Browserless /unblock + residential
- *   Copart          mode 'unblock'   proxy. Carfast aggregates Copart+IAAI US;
- *                                     Copart domain is country-aware (RHD->.co.uk).
+ * Fetch strategy per site:
+ *   Pickles (AU)  mode 'plain'   — server-rendered, plain fetch. RHD.
+ *   Carfast       mode 'unblock' — Cloudflare blocks datacenter IPs; needs
+ *   Copart        mode 'unblock'   Browserless /unblock + residential proxy.
+ *   Manheim (AU)  mode 'render'  — JS results, Browserless /content (no proxy).
  *
- * The 'unblock' sites only run when BROWSERLESS_PROXY is set (e.g. 'residential'),
- * so nothing bills for the paid proxy until you switch it on in Vercel.
- * Only public search-results-level data. No login. Rendered text -> Claude extracts.
+ * Carfast aggregates Copart + IAAI US, so IAAI-direct is NOT queried separately
+ * (it was slow and redundant). Copart domain is country-aware (RHD -> .co.uk).
+ *
+ * The 'unblock' sites only run when BROWSERLESS_PROXY is set, so nothing bills
+ * for the paid proxy until you switch it on. The whole step is bounded by
+ * SALVAGE_BUDGET_MS and every fetch has a hard timeout, so salvage can never
+ * push the function past Vercel's 300s limit.
  *
  *  Env:
  *   BROWSERLESS_API_KEY        (required for render/unblock)
- *   BROWSERLESS_PROXY          '' (off) | 'residential' | 'datacenter'   <-- flip to 'residential' to enable Carfast/IAAI/Copart
- *   BROWSERLESS_BASE           default https://chrome.browserless.io      (/content host)
- *   BROWSERLESS_UNBLOCK_BASE   default https://production-sfo.browserless.io (/unblock host)
- *   SALVAGE_BROWSER_WAIT       default 8000 (ms)
+ *   BROWSERLESS_PROXY          '' (off) | 'residential' | 'datacenter'   <-- 'residential' enables Carfast/Copart
+ *   BROWSERLESS_BASE           default https://chrome.browserless.io           (/content host)
+ *   BROWSERLESS_UNBLOCK_BASE   default https://production-sfo.browserless.io   (/unblock host)
+ *   SALVAGE_BROWSER_WAIT       default 5000 (ms per render)
+ *   SALVAGE_BUDGET_MS          default 100000 (ms — hard cap on the whole salvage step)
  */
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
@@ -26,7 +29,9 @@ const MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
 const BROWSERLESS_BASE = process.env.BROWSERLESS_BASE || 'https://chrome.browserless.io';
 const UNBLOCK_BASE = process.env.BROWSERLESS_UNBLOCK_BASE || 'https://production-sfo.browserless.io';
 const PROXY = process.env.BROWSERLESS_PROXY || ''; // '' disables unblock sites
-const RENDER_WAIT = Number(process.env.SALVAGE_BROWSER_WAIT || 8000);
+const RENDER_WAIT = Number(process.env.SALVAGE_BROWSER_WAIT || 5000);
+const BUDGET_MS = Number(process.env.SALVAGE_BUDGET_MS || 100000);
+const FETCH_TIMEOUT = 42000;
 
 const lc = (s) => (s || '').toLowerCase().trim();
 const slug = (s) => lc(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -34,25 +39,18 @@ const enc = encodeURIComponent;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RHD = ['au', 'gb', 'uk', 'nz', 'ie', 'za'];
 
-// v = { make, model, modelSlug, query, country }
+// v = { make, model, modelSlug, query, country }. Browser sites run in THIS order
+// within the time budget, so the most valuable source (Carfast) always goes first.
 const SITES = [
-  {
-    name: 'Carfast', mode: 'unblock', proxyCountry: 'us',
-    url: (v) => v.modelSlug
-      ? `https://carfast.express/auction/brand-${slug(v.make)},model-${v.modelSlug}`
-      : `https://carfast.express/auction/brand-${slug(v.make)}`
-  },
-  {
-    name: 'IAAI', mode: 'unblock', proxyCountry: 'us',
-    url: (v) => `https://www.iaai.com/Search?Keyword=${enc(v.query)}`
-  },
   {
     name: 'Pickles', mode: 'plain',
     url: (v) => `https://www.pickles.com.au/used/search/cars/${slug(v.make)}`
   },
   {
-    name: 'Manheim', mode: 'render',
-    url: (v) => `https://www.manheim.com.au/damaged-vehicles/search?CategoryCode=13&CategoryCodeDescription=${enc('Cars & Light Commercial')}&ManufacturerCode=${enc(v.make.toUpperCase())}&ManufacturerCodeDescription=${enc(v.make)}&refineName=ManufacturerCode`
+    name: 'Carfast', mode: 'unblock', proxyCountry: 'us',
+    url: (v) => v.modelSlug
+      ? `https://carfast.express/auction/brand-${slug(v.make)},model-${v.modelSlug}`
+      : `https://carfast.express/auction/brand-${slug(v.make)}`
   },
   {
     name: 'Copart', mode: 'unblock',
@@ -61,6 +59,10 @@ const SITES = [
       const base = RHD.includes(v.country) ? 'https://www.copart.co.uk' : 'https://www.copart.com';
       return `${base}/lotSearchResults/?free=true&query=${enc(v.query)}`;
     }
+  },
+  {
+    name: 'Manheim', mode: 'render',
+    url: (v) => `https://www.manheim.com.au/damaged-vehicles/search?CategoryCode=13&CategoryCodeDescription=${enc('Cars & Light Commercial')}&ManufacturerCode=${enc(v.make.toUpperCase())}&ManufacturerCodeDescription=${enc(v.make)}&refineName=ManufacturerCode`
   }
 ];
 
@@ -84,48 +86,56 @@ function isPoor(text) {
 }
 
 async function normalFetch(url) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), 15000);
   try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 15000);
     const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
-    clearTimeout(t);
     if (!r.ok) return '';
     return stripHtml(await r.text());
   } catch (e) {
     return '';
+  } finally {
+    clearTimeout(t);
   }
 }
 
-// Browserless /content — renders JS, no proxy. Good for sites that don't block datacenter IPs.
+// Browserless /content — renders JS, no proxy. For sites that don't block datacenter IPs.
 async function renderFetch(url, retry = true) {
   const key = process.env.BROWSERLESS_API_KEY;
   if (!key) return '';
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), FETCH_TIMEOUT);
   try {
     const r = await fetch(`${BROWSERLESS_BASE}/content?token=${key}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         url,
-        gotoOptions: { waitUntil: 'networkidle2', timeout: 45000 },
+        gotoOptions: { waitUntil: 'networkidle2', timeout: 40000 },
         waitForTimeout: RENDER_WAIT,
         bestAttempt: true
-      })
+      }),
+      signal: c.signal
     });
     if (r.status === 429 && retry) { await sleep(3000); return renderFetch(url, false); }
     if (!r.ok) return '';
     return stripHtml(await r.text());
   } catch (e) {
     return '';
+  } finally {
+    clearTimeout(t);
   }
 }
 
 // Browserless /unblock + residential proxy — bypasses Cloudflare/bot detection for
-// sites that block datacenter IPs (Carfast, IAAI, Copart). Costs proxy units.
+// sites that block datacenter IPs (Carfast, Copart). Costs proxy units.
 async function unblockFetch(url, proxyCountry, retry = true) {
   const key = process.env.BROWSERLESS_API_KEY;
   if (!key || !PROXY) return ''; // disabled until BROWSERLESS_PROXY is set
   const params = new URLSearchParams({ token: key, proxy: PROXY });
   if (proxyCountry) params.set('proxyCountry', proxyCountry);
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), FETCH_TIMEOUT);
   try {
     const r = await fetch(`${UNBLOCK_BASE}/unblock?${params.toString()}`, {
       method: 'POST',
@@ -136,10 +146,11 @@ async function unblockFetch(url, proxyCountry, retry = true) {
         cookies: false,
         screenshot: false,
         browserWSEndpoint: false,
-        gotoOptions: { waitUntil: 'networkidle2', timeout: 45000 },
+        gotoOptions: { waitUntil: 'networkidle2', timeout: 40000 },
         waitForTimeout: RENDER_WAIT,
         bestAttempt: true
-      })
+      }),
+      signal: c.signal
     });
     if (r.status === 429 && retry) { await sleep(3000); return unblockFetch(url, proxyCountry, false); }
     if (!r.ok) return '';
@@ -147,6 +158,8 @@ async function unblockFetch(url, proxyCountry, retry = true) {
     return stripHtml(data && data.content ? data.content : '');
   } catch (e) {
     return '';
+  } finally {
+    clearTimeout(t);
   }
 }
 
@@ -207,6 +220,7 @@ async function extractLots(text, siteName, v) {
     'Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"}.',
     'Include ONLY vehicles actually present in the text. NEVER invent lots, prices, URLs or images.',
     'Keep ONLY lots whose make (and model, if given) match the vehicle searched; drop other makes/models.',
+    'DROP any lot that is already sold / closed / ended (skip it entirely).',
     'seller = the site name given. section = "Salvage & Donor Vehicles".',
     'url = the lot\'s own detail-page URL if present (absolute http URL); if a lot has no usable URL, skip it.',
     'price = current bid / buy-now if shown, else "". condition = damage or write-off/title status if shown (e.g. "Repairable Write-Off", "Front end damage").',
@@ -263,38 +277,41 @@ function wantsSalvage(project) {
 }
 
 export async function runSalvageSearch(project) {
-  try {
-    if (!wantsSalvage(project)) return [];
-    const v = await deriveVehicle(project);
-    if (!v.make) return [];
-    const out = [];
-    const push = (lots, site) => {
-      for (const l of lots) {
-        out.push({
-          ...l,
-          section: l.section || 'Salvage & Donor Vehicles',
-          seller: l.seller || site.name,
-          source: 'salvage'
-        });
-      }
-    };
+  const out = [];
+  const push = (lots, site) => {
+    for (const l of lots) {
+      out.push({
+        ...l,
+        section: l.section || 'Salvage & Donor Vehicles',
+        seller: l.seller || site.name,
+        source: 'salvage'
+      });
+    }
+  };
 
-    // Plain (non-browser) sites can run in parallel.
+  const work = (async () => {
+    if (!wantsSalvage(project)) return;
+    const v = await deriveVehicle(project);
+    if (!v.make) return;
+
+    // Plain (non-browser) sites in parallel.
     const plainSites = SITES.filter((s) => s.mode === 'plain');
     await Promise.all(plainSites.map(async (site) => {
       try { push(await extractLots(await getText(site, v), site.name, v), site); }
       catch (e) { /* skip */ }
     }));
 
-    // Browserless-backed sites (render + unblock) run ONE AT A TIME to avoid 429s.
+    // Browserless-backed sites (unblock + render) ONE AT A TIME, most valuable first.
     const browserSites = SITES.filter((s) => s.mode !== 'plain');
     for (const site of browserSites) {
       try { push(await extractLots(await getText(site, v), site.name, v), site); }
       catch (e) { /* skip */ }
     }
+  })().catch(() => {});
 
-    return out;
-  } catch (e) {
-    return [];
-  }
+  // Hard wall-clock cap: return whatever we have if the budget is hit.
+  let timer;
+  await Promise.race([work, new Promise((res) => { timer = setTimeout(res, BUDGET_MS); })]);
+  clearTimeout(timer);
+  return out;
 }
