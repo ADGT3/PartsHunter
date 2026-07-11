@@ -2,6 +2,7 @@ import { sql, ensureSchema, readBody, uid, parsePriceNum } from './_db.js';
 import { requireAuth } from './_auth.js';
 import { runSearch } from './_anthropic.js';
 import { runGrokSearch } from './_grok.js';
+import { runSalvageSearch } from './_salvage.js';
 
 const CAP = Number(process.env.RUN_CAP_PER_DAY || 20);
 
@@ -167,8 +168,10 @@ export default async function handler(req, res) {
 
     let claudeListings = [];
     let grokListings = [];
+    let salvageListings = [];
     let claudeErr = null;
     let grokErr = null;
+    let salvageErr = null;
 
     // Apply the project's filter checkboxes/country as extra search constraints.
     const filterRules = filtersToRules(project.config && project.config.filters);
@@ -188,22 +191,29 @@ export default async function handler(req, res) {
       return [];
     });
 
-    [claudeListings, grokListings] = await Promise.all([claudePromise, grokPromise]);
+    const salvagePromise = runSalvageSearch(searchProject).catch(e => {
+      salvageErr = (e && e.message) ? e.message : String(e);
+      console.error('Salvage failed:', salvageErr);
+      return [];
+    });
+
+    [claudeListings, grokListings, salvageListings] = await Promise.all([claudePromise, grokPromise, salvagePromise]);
 
     const { rows: existingRows } = await sql`SELECT section, title, description, price, currency, condition, seller, url, image, badges, source FROM listings WHERE project_id = ${projectId}`;
     const existing = existingRows.map(r => ({ ...r, badges: Array.isArray(r.badges) ? r.badges : [] }));
     const downvoted = new Set((fb || []).filter(f => f.vote < 0).map(f => normalizeUrl(f.listing_url)));
 
-    let listings = dropJunk(dropSold(mergeAndDeduplicate(existing, claudeListings, grokListings)))
+    let listings = dropJunk(dropSold(mergeAndDeduplicate([...salvageListings, ...existing], claudeListings, grokListings)))
       .filter(l => !downvoted.has(normalizeUrl(l.url)));
 
     listings = snapSections(listings, (project.config && project.config.categories) || []);
 
-    console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
+    console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Salvage: ${salvageListings.length} | Final: ${listings.length}`);
 
     if (listings.length === 0) {
       const detail = 'Claude: ' + (claudeErr ? ('ERROR — ' + claudeErr) : (claudeListings.length + ' returned')) +
-                     ' | Grok: ' + (grokErr ? ('ERROR — ' + grokErr) : (grokListings.length + ' returned'));
+                     ' | Grok: ' + (grokErr ? ('ERROR — ' + grokErr) : (grokListings.length + ' returned')) +
+                     ' | Salvage: ' + (salvageErr ? ('ERROR — ' + salvageErr) : (salvageListings.length + ' returned'));
       return res.status(502).json({ error: 'No results. ' + detail });
     }
 
