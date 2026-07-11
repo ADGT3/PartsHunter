@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const body = await readBody(req);
       console.log('POST body:', body);
-      const { name, goal } = body;
+      const { name, goal, filters } = body;
       if (!name || !goal) return res.status(400).json({ error: 'name and goal required' });
 
       let config = { categories: [], queries: [], rules: [] };
@@ -33,6 +33,8 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error('Config expansion failed (using empty):', e.message);
       }
+
+      config.filters = filters || { oem: false, aftermarket: false, salvage: false, country: 'all' };
 
       const projectId = uid();
       await sql`INSERT INTO projects (id, name, goal, config) VALUES (${projectId}, ${name}, ${goal}, ${JSON.stringify(config)}::jsonb)`;
