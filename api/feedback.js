@@ -27,6 +27,10 @@ export default async function handler(req, res) {
         VALUES (${uid()}, ${projectId}, ${url}, ${title || ''}, ${seller || ''}, ${vote}, ${reason || null})
         ON CONFLICT (project_id, listing_url)
         DO UPDATE SET vote = EXCLUDED.vote, reason = EXCLUDED.reason, listing_title = EXCLUDED.listing_title, seller = EXCLUDED.seller, created_at = now()`;
+      // A thumbs-down removes the listing from the accumulated set immediately.
+      if (vote === -1) {
+        await sql`DELETE FROM listings WHERE project_id = ${projectId} AND url = ${url}`;
+      }
       return res.status(200).json({ saved: true });
     }
 
