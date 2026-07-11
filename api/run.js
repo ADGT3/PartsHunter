@@ -37,8 +37,6 @@ function normTitle(t) {
   return (t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// Dedupe by URL AND by title (catches the same item listed on multiple sites).
-// Existing (already-saved) listings are added first so they persist; then Claude, then Grok.
 function mergeAndDeduplicate(existing = [], claude = [], grok = []) {
   const byUrl = new Map();
   const byTitle = new Map();
@@ -69,13 +67,11 @@ function mergeAndDeduplicate(existing = [], claude = [], grok = []) {
   return Array.from(byUrl.values());
 }
 
-// Drop listings that are clearly no longer available.
 const SOLD_RE = /\b(sold|ended|no longer available|withdrawn|expired|unavailable|out of stock)\b/i;
 function dropSold(listings) {
   return listings.filter(l => !SOLD_RE.test((l.title || '') + ' | ' + (l.condition || '')));
 }
 
-// Drop non-listing junk: forum threads, social, wiki, video — and fabricated/reported prices.
 const JUNK_URL_RE = /(reddit\.com|youtube\.com|youtu\.be|wikipedia\.org|facebook\.com|twitter\.com|x\.com|instagram\.com|911uk\.com|\/threads?\/|showthread|viewtopic|\/wiki\/)/i;
 function dropJunk(listings) {
   return listings.filter(l => {
@@ -86,8 +82,6 @@ function dropJunk(listings) {
 }
 
 // Force every listing's section to be one of the project's config categories.
-// The AI often invents its own granular section names; this snaps each listing to
-// the closest defined category so the page only ever shows the user's categories.
 const SECTION_STOP = new Set(['and', 'the', 'for', 'with', 'parts', 'part', 'vehicle', 'vehicles', 'system', 'oem']);
 function words(str) {
   return (str || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ')
@@ -101,10 +95,8 @@ function snapSections(listings, categories) {
 
   return listings.map(l => {
     const sec = l.section || '';
-    // exact (case/punct-insensitive) match wins
     const exact = cats.find(c => normOf(c) === normOf(sec));
     if (exact) return { ...l, section: exact };
-    // otherwise score category words against the listing's section + title
     const hay = words(sec + ' ' + (l.title || ''));
     let best = cats[0], bestScore = -1;
     for (const c of catWords) {
@@ -116,6 +108,40 @@ function snapSections(listings, categories) {
     }
     return { ...l, section: best };
   });
+}
+
+// Translate the user's filter checkboxes / country into search constraints.
+const COUNTRY = {
+  au: { name: 'Australia', tld: '.au / .com.au' },
+  us: { name: 'the United States', tld: '.com (US-based)' },
+  gb: { name: 'the United Kingdom', tld: '.co.uk / .uk' },
+  ca: { name: 'Canada', tld: '.ca' },
+  nz: { name: 'New Zealand', tld: '.co.nz / .nz' },
+  de: { name: 'Germany', tld: '.de' },
+  fr: { name: 'France', tld: '.fr' },
+  it: { name: 'Italy', tld: '.it' },
+  es: { name: 'Spain', tld: '.es' },
+  nl: { name: 'the Netherlands', tld: '.nl' },
+  jp: { name: 'Japan', tld: '.jp' },
+  ae: { name: 'the UAE', tld: '.ae' }
+};
+function filtersToRules(filters) {
+  if (!filters) return [];
+  const out = [];
+  const kinds = [];
+  if (filters.oem) kinds.push('genuine OEM parts');
+  if (filters.aftermarket) kinds.push('aftermarket parts');
+  if (filters.salvage) kinds.push('salvage / donor vehicles');
+  if (kinds.length) {
+    out.push('CONSTRAINT (result type): ONLY include ' + kinds.join(', ') + '. Exclude anything that is none of these.');
+  }
+  if (filters.country && filters.country !== 'all') {
+    const c = COUNTRY[filters.country] || { name: filters.country, tld: '' };
+    out.push('CONSTRAINT (geography): ONLY include listings based in or that ship to ' + c.name +
+      '. Strongly prefer local sites (' + c.tld + ') and sellers located in ' + c.name +
+      '; use site: queries for those domains. Exclude listings that cannot be purchased from ' + c.name + '.');
+  }
+  return out;
 }
 
 export default async function handler(req, res) {
@@ -144,13 +170,19 @@ export default async function handler(req, res) {
     let claudeErr = null;
     let grokErr = null;
 
-    const claudePromise = runSearch(project, fb).catch(e => {
+    // Apply the project's filter checkboxes/country as extra search constraints.
+    const filterRules = filtersToRules(project.config && project.config.filters);
+    const searchProject = filterRules.length
+      ? { ...project, config: { ...(project.config || {}), rules: [ ...((project.config && project.config.rules) || []), ...filterRules ] } }
+      : project;
+
+    const claudePromise = runSearch(searchProject, fb).catch(e => {
       claudeErr = (e && e.message) ? e.message : String(e);
       console.error('Claude failed:', claudeErr);
       return [];
     });
 
-    const grokPromise = runGrokSearch(project, fb).catch(e => {
+    const grokPromise = runGrokSearch(searchProject, fb).catch(e => {
       grokErr = (e && e.message) ? e.message : String(e);
       console.error('Grok failed:', grokErr);
       return [];
@@ -158,8 +190,6 @@ export default async function handler(req, res) {
 
     [claudeListings, grokListings] = await Promise.all([claudePromise, grokPromise]);
 
-    // Accumulate: merge new results with what we already have, drop junk/sold, and
-    // remove anything the user has thumbed-down.
     const { rows: existingRows } = await sql`SELECT section, title, description, price, currency, condition, seller, url, image, badges, source FROM listings WHERE project_id = ${projectId}`;
     const existing = existingRows.map(r => ({ ...r, badges: Array.isArray(r.badges) ? r.badges : [] }));
     const downvoted = new Set((fb || []).filter(f => f.vote < 0).map(f => normalizeUrl(f.listing_url)));
@@ -167,7 +197,6 @@ export default async function handler(req, res) {
     let listings = dropJunk(dropSold(mergeAndDeduplicate(existing, claudeListings, grokListings)))
       .filter(l => !downvoted.has(normalizeUrl(l.url)));
 
-    // Snap every section to one of the project's defined categories.
     listings = snapSections(listings, (project.config && project.config.categories) || []);
 
     console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
@@ -178,7 +207,6 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'No results. ' + detail });
     }
 
-    // Enrich images (first 40)
     await Promise.allSettled(
       listings.slice(0, 40).map(async (l) => {
         if (!l.image && l.url) {
@@ -190,10 +218,8 @@ export default async function handler(req, res) {
     const runId = uid();
     await sql`INSERT INTO runs (id, project_id, status, listing_count, notes) VALUES (${runId}, ${projectId}, 'complete', ${listings.length}, 'Hybrid Claude + Grok')`;
 
-    // Replace this project's listings with the merged, cleaned set.
     await sql`DELETE FROM listings WHERE project_id = ${projectId}`;
 
-    // Insert all listings
     for (const l of listings) {
       const badges = Array.isArray(l.badges) ? l.badges : [];
       await sql`INSERT INTO listings (id, project_id, run_id, section, title, description, price, price_num, currency, condition, seller, url, image, badges, source)
@@ -218,11 +244,9 @@ export default async function handler(req, res) {
 
     await sql`UPDATE projects SET run_count = run_count + 1, last_run_at = now() WHERE id = ${projectId}`;
 
-    // IMPORTANT: Return the in-memory listings so the UI always has them
-    // (avoids any SELECT timing / visibility issues)
     const responseListings = listings.map(l => ({
       ...l,
-      id: uid(), // temporary client-side id
+      id: uid(),
       project_id: projectId,
       run_id: runId
     }));
