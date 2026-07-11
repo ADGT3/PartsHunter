@@ -1,38 +1,50 @@
 /* Salvage / auction search — verified sources (Jul 2026).
  *
- *  carfast.express : plain fetch  (server-rendered) — aggregates Copart + IAAI US
- *  Pickles (AU)    : plain fetch  (server-rendered) — RHD
- *  Manheim (AU)    : Browserless render (results load via JS) — RHD
- *  Copart          : Browserless render (results load via JS).
- *                    Domain is country-aware: AU/UK/NZ -> copart.co.uk (RHD,
- *                    additive to carfast); otherwise copart.com.
+ * Fetch strategy per site (verified against live behaviour + Vercel trace):
+ *   Pickles (AU)    mode 'plain'   — server-rendered, plain fetch. RHD.
+ *   Manheim (AU)    mode 'render'  — JS results, Browserless /content. RHD.
+ *   Carfast         mode 'unblock' — Cloudflare blocks datacenter IPs (403);
+ *   IAAI            mode 'unblock'   needs Browserless /unblock + residential
+ *   Copart          mode 'unblock'   proxy. Carfast aggregates Copart+IAAI US;
+ *                                     Copart domain is country-aware (RHD->.co.uk).
  *
- * Only PUBLIC search-results-level data (title, lot url, price/bid, damage,
- * location). No login. Each page's rendered text is handed to Claude to extract
- * the lots, so we're robust to layout changes.
+ * The 'unblock' sites only run when BROWSERLESS_PROXY is set (e.g. 'residential'),
+ * so nothing bills for the paid proxy until you switch it on in Vercel.
+ * Only public search-results-level data. No login. Rendered text -> Claude extracts.
  *
- * >>> Verified search-URL formats live before shipping. If a site changes its
- *     format, edit SITES below. <<<
+ *  Env:
+ *   BROWSERLESS_API_KEY        (required for render/unblock)
+ *   BROWSERLESS_PROXY          '' (off) | 'residential' | 'datacenter'   <-- flip to 'residential' to enable Carfast/IAAI/Copart
+ *   BROWSERLESS_BASE           default https://chrome.browserless.io      (/content host)
+ *   BROWSERLESS_UNBLOCK_BASE   default https://production-sfo.browserless.io (/unblock host)
+ *   SALVAGE_BROWSER_WAIT       default 8000 (ms)
  */
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 const MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
 const BROWSERLESS_BASE = process.env.BROWSERLESS_BASE || 'https://chrome.browserless.io';
+const UNBLOCK_BASE = process.env.BROWSERLESS_UNBLOCK_BASE || 'https://production-sfo.browserless.io';
+const PROXY = process.env.BROWSERLESS_PROXY || ''; // '' disables unblock sites
 const RENDER_WAIT = Number(process.env.SALVAGE_BROWSER_WAIT || 8000);
 
 const lc = (s) => (s || '').toLowerCase().trim();
 const slug = (s) => lc(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const enc = encodeURIComponent;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const RHD = ['au', 'gb', 'uk', 'nz', 'ie', 'za'];
 
 // v = { make, model, modelSlug, query, country }
 const SITES = [
   {
-    name: 'Carfast', mode: 'plain',
+    name: 'Carfast', mode: 'unblock', proxyCountry: 'us',
     url: (v) => v.modelSlug
       ? `https://carfast.express/auction/brand-${slug(v.make)},model-${v.modelSlug}`
       : `https://carfast.express/auction/brand-${slug(v.make)}`
+  },
+  {
+    name: 'IAAI', mode: 'unblock', proxyCountry: 'us',
+    url: (v) => `https://www.iaai.com/Search?Keyword=${enc(v.query)}`
   },
   {
     name: 'Pickles', mode: 'plain',
@@ -43,7 +55,8 @@ const SITES = [
     url: (v) => `https://www.manheim.com.au/damaged-vehicles/search?CategoryCode=13&CategoryCodeDescription=${enc('Cars & Light Commercial')}&ManufacturerCode=${enc(v.make.toUpperCase())}&ManufacturerCodeDescription=${enc(v.make)}&refineName=ManufacturerCode`
   },
   {
-    name: 'Copart', mode: 'render',
+    name: 'Copart', mode: 'unblock',
+    proxyCountry: (v) => (RHD.includes(v.country) ? 'gb' : 'us'),
     url: (v) => {
       const base = RHD.includes(v.country) ? 'https://www.copart.co.uk' : 'https://www.copart.com';
       return `${base}/lotSearchResults/?free=true&query=${enc(v.query)}`;
@@ -62,7 +75,6 @@ function stripHtml(html) {
     .trim();
 }
 
-// "Poor" = empty, or still an un-rendered JS template shell.
 function isPoor(text) {
   if (!text) return true;
   const t = text.trim();
@@ -84,6 +96,7 @@ async function normalFetch(url) {
   }
 }
 
+// Browserless /content — renders JS, no proxy. Good for sites that don't block datacenter IPs.
 async function renderFetch(url, retry = true) {
   const key = process.env.BROWSERLESS_API_KEY;
   if (!key) return '';
@@ -98,11 +111,7 @@ async function renderFetch(url, retry = true) {
         bestAttempt: true
       })
     });
-    // Browserless free/low plans allow 1 concurrent session -> 429. Back off once.
-    if (r.status === 429 && retry) {
-      await new Promise((res) => setTimeout(res, 3000));
-      return renderFetch(url, false);
-    }
+    if (r.status === 429 && retry) { await sleep(3000); return renderFetch(url, false); }
     if (!r.ok) return '';
     return stripHtml(await r.text());
   } catch (e) {
@@ -110,17 +119,56 @@ async function renderFetch(url, retry = true) {
   }
 }
 
-// plain sites: fetch first, render only if the raw HTML was thin.
-// render sites: render first (results are JS), plain as a last resort.
-async function getText(site, url) {
+// Browserless /unblock + residential proxy — bypasses Cloudflare/bot detection for
+// sites that block datacenter IPs (Carfast, IAAI, Copart). Costs proxy units.
+async function unblockFetch(url, proxyCountry, retry = true) {
+  const key = process.env.BROWSERLESS_API_KEY;
+  if (!key || !PROXY) return ''; // disabled until BROWSERLESS_PROXY is set
+  const params = new URLSearchParams({ token: key, proxy: PROXY });
+  if (proxyCountry) params.set('proxyCountry', proxyCountry);
+  try {
+    const r = await fetch(`${UNBLOCK_BASE}/unblock?${params.toString()}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        url,
+        content: true,
+        cookies: false,
+        screenshot: false,
+        browserWSEndpoint: false,
+        gotoOptions: { waitUntil: 'networkidle2', timeout: 45000 },
+        waitForTimeout: RENDER_WAIT,
+        bestAttempt: true
+      })
+    });
+    if (r.status === 429 && retry) { await sleep(3000); return unblockFetch(url, proxyCountry, false); }
+    if (!r.ok) return '';
+    const data = await r.json();
+    return stripHtml(data && data.content ? data.content : '');
+  } catch (e) {
+    return '';
+  }
+}
+
+async function getText(site, v) {
+  const url = site.url(v);
   if (site.mode === 'plain') {
     const n = await normalFetch(url);
     if (!isPoor(n)) return n;
     return await renderFetch(url);
   }
-  const b = await renderFetch(url);
-  if (!isPoor(b)) return b;
-  return await normalFetch(url);
+  if (site.mode === 'render') {
+    const b = await renderFetch(url);
+    if (!isPoor(b)) return b;
+    return await normalFetch(url);
+  }
+  if (site.mode === 'unblock') {
+    if (!PROXY) return ''; // needs residential proxy; skip until enabled (no cost)
+    const pc = typeof site.proxyCountry === 'function' ? site.proxyCountry(v) : site.proxyCountry;
+    const u = await unblockFetch(url, pc);
+    return isPoor(u) ? '' : u;
+  }
+  return '';
 }
 
 function parseArr(t) {
@@ -181,7 +229,6 @@ function fallbackQuery(src) {
     .trim();
 }
 
-// Identify the single vehicle the project is about.
 async function deriveVehicle(project) {
   const cfg = project.config || {};
   const country = lc((cfg.filters && cfg.filters.country) || 'all');
@@ -215,7 +262,6 @@ function wantsSalvage(project) {
   return /salvage|wreck|write.?off|donor|damaged|crashed|parts? car/.test(hay);
 }
 
-// Public entry point. Returns listing objects tagged source:'salvage'.
 export async function runSalvageSearch(project) {
   try {
     if (!wantsSalvage(project)) return [];
@@ -236,14 +282,14 @@ export async function runSalvageSearch(project) {
     // Plain (non-browser) sites can run in parallel.
     const plainSites = SITES.filter((s) => s.mode === 'plain');
     await Promise.all(plainSites.map(async (site) => {
-      try { push(await extractLots(await getText(site, site.url(v)), site.name, v), site); }
+      try { push(await extractLots(await getText(site, v), site.name, v), site); }
       catch (e) { /* skip */ }
     }));
 
-    // Render sites hit Browserless -> run ONE AT A TIME to avoid 429 concurrency errors.
-    const renderSites = SITES.filter((s) => s.mode === 'render');
-    for (const site of renderSites) {
-      try { push(await extractLots(await getText(site, site.url(v)), site.name, v), site); }
+    // Browserless-backed sites (render + unblock) run ONE AT A TIME to avoid 429s.
+    const browserSites = SITES.filter((s) => s.mode !== 'plain');
+    for (const site of browserSites) {
+      try { push(await extractLots(await getText(site, v), site.name, v), site); }
       catch (e) { /* skip */ }
     }
 
