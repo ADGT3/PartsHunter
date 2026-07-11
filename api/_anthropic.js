@@ -112,7 +112,8 @@ async function fetchPageWithBrowser(url) {
       body: JSON.stringify({
         url: url,
         gotoOptions: { waitUntil: 'networkidle2', timeout: 30000 },
-        waitFor: 2000
+        waitForTimeout: 5000,
+        bestAttempt: true
       })
     });
 

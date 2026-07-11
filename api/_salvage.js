@@ -84,7 +84,7 @@ async function normalFetch(url) {
   }
 }
 
-async function renderFetch(url) {
+async function renderFetch(url, retry = true) {
   const key = process.env.BROWSERLESS_API_KEY;
   if (!key) return '';
   try {
@@ -94,9 +94,15 @@ async function renderFetch(url) {
       body: JSON.stringify({
         url,
         gotoOptions: { waitUntil: 'networkidle2', timeout: 45000 },
-        waitFor: RENDER_WAIT
+        waitForTimeout: RENDER_WAIT,
+        bestAttempt: true
       })
     });
+    // Browserless free/low plans allow 1 concurrent session -> 429. Back off once.
+    if (r.status === 429 && retry) {
+      await new Promise((res) => setTimeout(res, 3000));
+      return renderFetch(url, false);
+    }
     if (!r.ok) return '';
     return stripHtml(await r.text());
   } catch (e) {
@@ -216,20 +222,31 @@ export async function runSalvageSearch(project) {
     const v = await deriveVehicle(project);
     if (!v.make) return [];
     const out = [];
-    await Promise.all(SITES.map(async (site) => {
-      try {
-        const text = await getText(site, site.url(v));
-        const lots = await extractLots(text, site.name, v);
-        for (const l of lots) {
-          out.push({
-            ...l,
-            section: l.section || 'Salvage & Donor Vehicles',
-            seller: l.seller || site.name,
-            source: 'salvage'
-          });
-        }
-      } catch (e) { /* skip this site */ }
+    const push = (lots, site) => {
+      for (const l of lots) {
+        out.push({
+          ...l,
+          section: l.section || 'Salvage & Donor Vehicles',
+          seller: l.seller || site.name,
+          source: 'salvage'
+        });
+      }
+    };
+
+    // Plain (non-browser) sites can run in parallel.
+    const plainSites = SITES.filter((s) => s.mode === 'plain');
+    await Promise.all(plainSites.map(async (site) => {
+      try { push(await extractLots(await getText(site, site.url(v)), site.name, v), site); }
+      catch (e) { /* skip */ }
     }));
+
+    // Render sites hit Browserless -> run ONE AT A TIME to avoid 429 concurrency errors.
+    const renderSites = SITES.filter((s) => s.mode === 'render');
+    for (const site of renderSites) {
+      try { push(await extractLots(await getText(site, site.url(v)), site.name, v), site); }
+      catch (e) { /* skip */ }
+    }
+
     return out;
   } catch (e) {
     return [];
