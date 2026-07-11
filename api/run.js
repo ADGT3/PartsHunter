@@ -85,6 +85,39 @@ function dropJunk(listings) {
   });
 }
 
+// Force every listing's section to be one of the project's config categories.
+// The AI often invents its own granular section names; this snaps each listing to
+// the closest defined category so the page only ever shows the user's categories.
+const SECTION_STOP = new Set(['and', 'the', 'for', 'with', 'parts', 'part', 'vehicle', 'vehicles', 'system', 'oem']);
+function words(str) {
+  return (str || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ')
+    .filter(w => w.length > 2 && !SECTION_STOP.has(w));
+}
+function snapSections(listings, categories) {
+  const cats = (categories || []).filter(Boolean);
+  if (!cats.length) return listings;
+  const catWords = cats.map(c => ({ name: c, words: words(c) }));
+  const normOf = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  return listings.map(l => {
+    const sec = l.section || '';
+    // exact (case/punct-insensitive) match wins
+    const exact = cats.find(c => normOf(c) === normOf(sec));
+    if (exact) return { ...l, section: exact };
+    // otherwise score category words against the listing's section + title
+    const hay = words(sec + ' ' + (l.title || ''));
+    let best = cats[0], bestScore = -1;
+    for (const c of catWords) {
+      let score = 0;
+      for (const cw of c.words) {
+        if (hay.some(hw => hw === cw || (cw.length > 3 && (hw.includes(cw) || cw.includes(hw))))) score++;
+      }
+      if (score > bestScore) { bestScore = score; best = c.name; }
+    }
+    return { ...l, section: best };
+  });
+}
+
 export default async function handler(req, res) {
   try {
     await ensureSchema();
@@ -133,6 +166,9 @@ export default async function handler(req, res) {
 
     let listings = dropJunk(dropSold(mergeAndDeduplicate(existing, claudeListings, grokListings)))
       .filter(l => !downvoted.has(normalizeUrl(l.url)));
+
+    // Snap every section to one of the project's defined categories.
+    listings = snapSections(listings, (project.config && project.config.categories) || []);
 
     console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Final: ${listings.length}`);
 
