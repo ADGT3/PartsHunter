@@ -28,6 +28,29 @@
     <input type="text" id="pname" placeholder="e.g. McLaren 720S — seats">
     <label for="pgoal">What are you hunting for? (plain language)</label>
     <textarea id="pgoal" placeholder="e.g. Find OEM carbon sports seats for a McLaren 720S, complete seats not inserts, with red stitching."></textarea>
+    <label style="margin-top:12px;display:block;font-size:13px;font-weight:700">Filters</label>
+    <div class="filters" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:6px 0 4px;font-size:14px">
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fOem"> OEM parts</label>
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fAft"> Aftermarket parts</label>
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fSalv"> Salvage vehicles</label>
+      <label style="display:flex;gap:6px;align-items:center">Country
+        <select id="fCountry" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:inherit">
+          <option value="all">All</option>
+          <option value="au">Australia</option>
+          <option value="us">United States</option>
+          <option value="gb">United Kingdom</option>
+          <option value="ca">Canada</option>
+          <option value="nz">New Zealand</option>
+          <option value="de">Germany</option>
+          <option value="fr">France</option>
+          <option value="it">Italy</option>
+          <option value="es">Spain</option>
+          <option value="nl">Netherlands</option>
+          <option value="jp">Japan</option>
+          <option value="ae">UAE</option>
+        </select>
+      </label>
+    </div>
     <div class="hint muted" style="font-size:12px;margin-top:6px">On save, the AI drafts the search queries &amp; rules for you — you can edit them before running.</div>
     <div class="row">
       <button class="btn" id="createBtn">Create project</button>
@@ -74,7 +97,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (!name || !goal) { msg.innerHTML = '<div class="banner err">Name and goal are both required.</div>'; return; }
     msg.innerHTML = '<div class="banner"><span class="spinner"></span> Drafting search config with AI…</div>';
     try {
-      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal } });
+      const filters = {
+        oem: document.getElementById('fOem').checked,
+        aftermarket: document.getElementById('fAft').checked,
+        salvage: document.getElementById('fSalv').checked,
+        country: document.getElementById('fCountry').value
+      };
+      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters } });
       location.href = 'project.html?id=' + encodeURIComponent(project.id);
     } catch (e) {
       msg.innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>';
