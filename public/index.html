@@ -5,105 +5,191 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=4">
-<script src="/assets/app.js?v=4" defer></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=6">
+<script src="/assets/app.js?v=6" defer></script>
 </head>
 <body>
-<header class="hero">
-  <div class="wrap">
-    <div class="hero-top">
-      <div class="brand">
-        <img class="logo-full" src="/assets/logo.png" alt="Parts Sniper">
-      </div>
-    </div>
-  </div>
+<header class="ps-header">
+  <a class="ps-brand" href="/index.html">
+    <img src="/assets/logo.png" alt="Parts Sniper" onerror="this.style.display='none'">
+    <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
+  </a>
+  <nav class="ps-nav">
+    <a href="/index.html" class="active">Projects</a>
+    <a href="/watchlist.html">Watchlist <span class="count" id="navSaved"></span></a>
+    <a href="/alerts.html">Alerts <span id="navAlerts"></span></a>
+  </nav>
+  <div class="ps-spacer"></div>
+  <button class="btn" id="newBtnTop"><span class="plus">＋</span> New hunt</button>
+  <div class="ps-avatar" id="avatar">PS</div>
 </header>
 
-<div class="wrap">
-  <h1 class="page">Projects</h1>
-  <div class="muted">Each project is its own search that learns from your feedback. Create one from a plain-language goal.</div>
+<main class="ps-main">
+  <!-- ===== NEW HUNT ===== -->
+  <section id="newHunt" class="ps-rise" style="display:none; max-width:720px">
+    <div class="crumb"><a href="#" id="backProjects">&#8592; Back to projects</a></div>
+    <div class="eyebrow" style="margin-top:16px">// NEW HUNT</div>
+    <h1 class="page">Set your target</h1>
+    <p class="lede">Describe what you're after in plain language. The sniper drafts the search queries and rules — you review before it runs.</p>
 
-  <div id="createForm" class="form" style="display:none">
-    <label for="pname">Project name</label>
-    <input type="text" id="pname" placeholder="e.g. McLaren 720S — seats">
-    <label for="pgoal">What are you hunting for? (plain language)</label>
-    <textarea id="pgoal" placeholder="e.g. Find OEM carbon sports seats for a McLaren 720S, complete seats not inserts, with red stitching."></textarea>
-    <label style="margin-top:12px;display:block;font-size:13px;font-weight:700">Filters</label>
-    <div class="filters" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:6px 0 4px;font-size:14px">
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fOem"> OEM parts</label>
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fAft"> Aftermarket parts</label>
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fSalv"> Salvage vehicles</label>
-      <label style="display:flex;gap:6px;align-items:center">Country
-        <select id="fCountry" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:inherit">
-          <option value="all">All</option>
+    <div class="panel" style="margin-top:24px">
+      <div class="field">
+        <label for="pname">Project name</label>
+        <input type="text" id="pname" placeholder="e.g. McLaren 720S — carbon seats">
+      </div>
+      <div class="field">
+        <label for="pgoal">What are you hunting for?</label>
+        <textarea id="pgoal" placeholder="e.g. OEM carbon sports seats for a McLaren 720S — complete seats not inserts, red stitching."></textarea>
+      </div>
+      <div class="field">
+        <label>Sources</label>
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="fOem"> OEM parts</label>
+          <label class="check"><input type="checkbox" id="fAft"> Aftermarket parts</label>
+          <label class="check"><input type="checkbox" id="fSalv"> Salvage vehicles</label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="fCountry">Country</label>
+        <select id="fCountry">
+          <option value="all">All countries</option>
           <option value="au">Australia</option>
           <option value="us">United States</option>
           <option value="gb">United Kingdom</option>
           <option value="ca">Canada</option>
           <option value="nz">New Zealand</option>
           <option value="de">Germany</option>
-          <option value="fr">France</option>
-          <option value="it">Italy</option>
-          <option value="es">Spain</option>
-          <option value="nl">Netherlands</option>
           <option value="jp">Japan</option>
-          <option value="ae">UAE</option>
+          <option value="ae">United Arab Emirates</option>
         </select>
-      </label>
+      </div>
+      <div class="hint" style="margin-bottom:16px">On save, the sniper drafts your search queries &amp; matching rules. You can edit everything before running.</div>
+      <div class="form-actions">
+        <button class="btn" id="createBtn">Draft my search &#8594;</button>
+        <button class="btn grey" id="cancelBtn">Cancel</button>
+      </div>
+      <div id="createMsg" style="margin-top:14px"></div>
     </div>
-    <div class="hint muted" style="font-size:12px;margin-top:6px">On save, the AI drafts the search queries &amp; rules for you — you can edit them before running.</div>
-    <div class="row">
-      <button class="btn" id="createBtn">Create project</button>
-      <button class="btn grey" id="cancelBtn">Cancel</button>
-    </div>
-    <div id="createMsg"></div>
-  </div>
+  </section>
 
-  <div id="grid" class="pgrid"><div class="muted" style="padding:20px 0">Loading projects…</div></div>
-</div>
+  <!-- ===== PROJECTS ===== -->
+  <section id="projects" class="ps-rise">
+    <div class="row-between">
+      <div>
+        <div class="eyebrow">// ACTIVE HUNTS</div>
+        <h1 class="page">Projects</h1>
+        <p class="lede">Each project is its own search that learns from your feedback. Create one from a plain-language goal and let the sniper do the hunting.</p>
+      </div>
+      <button class="btn" id="newBtn"><span class="plus">＋</span> New hunt</button>
+    </div>
+
+    <div class="stats" id="stats">
+      <div class="stat"><div class="k">ACTIVE HUNTS</div><div class="v" id="sActive">–</div></div>
+      <div class="stat"><div class="k">TOTAL MATCHES</div><div class="v" id="sMatches">–</div></div>
+      <div class="stat"><div class="k">RUN TODAY</div><div class="v accent" id="sToday">–</div></div>
+      <div class="stat"><div class="k">SEARCHES RUN</div><div class="v" id="sRuns">–</div></div>
+    </div>
+
+    <div id="grid" class="pgrid"><div class="muted" style="padding:20px 0">Loading projects…</div></div>
+  </section>
+</main>
+
+<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
 
 <script>
-document.addEventListener('DOMContentLoaded', async function () {
+document.addEventListener('DOMContentLoaded', function () {
   const grid = document.getElementById('grid');
-  const form = document.getElementById('createForm');
-  function showForm(v){ form.style.display = v ? 'block' : 'none'; if(v) document.getElementById('pname').focus(); }
+  const projSec = document.getElementById('projects');
+  const newSec = document.getElementById('newHunt');
+  PH.updateWatchCount();
+
+  function showNew(v) {
+    newSec.style.display = v ? 'block' : 'none';
+    projSec.style.display = v ? 'none' : 'block';
+    if (v) document.getElementById('pname').focus();
+    window.scrollTo(0, 0);
+  }
+  document.getElementById('newBtn').addEventListener('click', () => showNew(true));
+  document.getElementById('newBtnTop').addEventListener('click', () => showNew(true));
+  document.getElementById('cancelBtn').addEventListener('click', () => showNew(false));
+  document.getElementById('backProjects').addEventListener('click', (e) => { e.preventDefault(); showNew(false); });
+
+  // keep the Source checkbox chips highlighted when ticked
+  document.querySelectorAll('.check input').forEach((cb) => {
+    const sync = () => cb.closest('.check').classList.toggle('on', cb.checked);
+    cb.addEventListener('change', sync); sync();
+  });
+
+  function readFilters() {
+    return {
+      oem: document.getElementById('fOem').checked,
+      aftermarket: document.getElementById('fAft').checked,
+      salvage: document.getElementById('fSalv').checked,
+      country: document.getElementById('fCountry').value
+    };
+  }
+
+  function ago(iso) {
+    if (!iso) return 'never run';
+    const d = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (d < 3600) return Math.max(1, Math.round(d / 60)) + 'm ago';
+    if (d < 86400) return Math.round(d / 3600) + 'h ago';
+    return Math.round(d / 86400) + 'd ago';
+  }
+  const isToday = (iso) => iso && (Date.now() - new Date(iso).getTime()) < 86400000;
 
   async function load() {
     try {
       const { projects } = await PH.api('/api/projects');
+      // stats
+      const matches = projects.reduce((n, p) => n + (p.listing_count || 0), 0);
+      const runs = projects.reduce((n, p) => n + (p.run_count || 0), 0);
+      const today = projects.filter((p) => isToday(p.last_run_at)).length;
+      document.getElementById('sActive').textContent = projects.length;
+      document.getElementById('sMatches').textContent = matches;
+      document.getElementById('sToday').textContent = today;
+      document.getElementById('sRuns').textContent = runs;
+
       grid.innerHTML = '';
       projects.forEach((p) => {
+        const cats = (p.config && p.config.categories) ? p.config.categories.slice(0, 3) : [];
+        const active = isToday(p.last_run_at);
         const a = document.createElement('a');
-        a.className = 'pcard'; a.href = 'project.html?id=' + encodeURIComponent(p.id);
-        const cats = (p.config && p.config.categories) ? p.config.categories.join(' · ') : '';
-        a.innerHTML = '<h3>' + PH.esc(p.name) + '</h3><div class="goal">' + PH.esc(p.goal) + '</div>' +
-          '<div class="meta"><span>' + (p.listing_count || 0) + ' listings</span>' + (cats ? '<span>' + PH.esc(cats) + '</span>' : '') + '</div>';
+        a.className = 'pcard';
+        a.href = 'project.html?id=' + encodeURIComponent(p.id);
+        a.innerHTML =
+          '<div class="pcard-top">' +
+            '<div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>' + (active ? 'ACTIVE' : 'IDLE') + '</div>' +
+            '<span class="pcard-when">' + ago(p.last_run_at) + '</span>' +
+          '</div>' +
+          '<h3>' + PH.esc(p.name) + '</h3>' +
+          '<p class="goal">' + PH.esc(p.goal || '') + '</p>' +
+          '<div class="tags">' + cats.map((c) => '<span class="tag">' + PH.esc(c) + '</span>').join('') + '</div>' +
+          '<div class="pcard-foot"><div><span class="n">' + (p.listing_count || 0) + '</span><span class="lbl">matches</span></div>' +
+            (active ? '<span class="new">RECENT</span>' : '') + '</div>';
         grid.appendChild(a);
       });
       const nc = document.createElement('div');
-      nc.className = 'pcard newcard'; nc.textContent = '+ New project';
-      nc.addEventListener('click', () => showForm(true));
+      nc.className = 'newcard';
+      nc.innerHTML = '<div class="circ">＋</div><div>Start a new hunt</div>';
+      nc.addEventListener('click', () => showNew(true));
       grid.appendChild(nc);
     } catch (e) {
-      grid.innerHTML = '<div class="banner err">Could not load projects: ' + PH.esc(e.message) + '<br><span class="muted">If this is the first load, make sure Vercel Postgres is connected.</span></div>';
+      grid.innerHTML = '<div class="banner err">Could not load projects: ' + PH.esc(e.message) + '</div>';
     }
   }
 
-  document.getElementById('cancelBtn').addEventListener('click', () => showForm(false));
   document.getElementById('createBtn').addEventListener('click', async () => {
     const name = document.getElementById('pname').value.trim();
     const goal = document.getElementById('pgoal').value.trim();
     const msg = document.getElementById('createMsg');
     if (!name || !goal) { msg.innerHTML = '<div class="banner err">Name and goal are both required.</div>'; return; }
-    msg.innerHTML = '<div class="banner"><span class="spinner"></span> Drafting search config with AI…</div>';
+    msg.innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search with AI…</div>';
     try {
-      const filters = {
-        oem: document.getElementById('fOem').checked,
-        aftermarket: document.getElementById('fAft').checked,
-        salvage: document.getElementById('fSalv').checked,
-        country: document.getElementById('fCountry').value
-      };
-      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters } });
+      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters: readFilters() } });
       location.href = 'project.html?id=' + encodeURIComponent(project.id);
     } catch (e) {
       msg.innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>';

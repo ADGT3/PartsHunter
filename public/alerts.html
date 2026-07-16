@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parts Sniper — Alerts</title>
+<link rel="icon" href="/assets/mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=6">
+<script src="/assets/app.js?v=6" defer></script>
+</head>
+<body>
+<header class="ps-header">
+  <a class="ps-brand" href="/index.html">
+    <img src="/assets/logo.png" alt="Parts Sniper" onerror="this.style.display='none'">
+    <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
+  </a>
+  <nav class="ps-nav">
+    <a href="/index.html">Projects</a>
+    <a href="/watchlist.html">Watchlist <span class="count" id="navSaved"></span></a>
+    <a href="/alerts.html" class="active">Alerts</a>
+  </nav>
+  <div class="ps-spacer"></div>
+  <button class="btn" onclick="location.href='/index.html'"><span class="plus">＋</span> New hunt</button>
+  <div class="ps-avatar">PS</div>
+</header>
+
+<main class="ps-main">
+  <div class="eyebrow">// ACTIVITY FEED</div>
+  <h1 class="page">Alerts</h1>
+  <p class="lede">Everything your hunts flagged — new high-scoring matches, price drops on parts you're tracking, and listings that ended.</p>
+
+  <div id="wrap" style="margin-top:28px"><div class="muted">Loading activity…</div></div>
+</main>
+
+<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  PH.updateWatchCount();
+  const wrap = document.getElementById('wrap');
+
+  function esc(s) { return PH.esc(s); }
+  function item(type, icon, headHtml, meta, ts, url) { return { type, icon, headHtml, meta, ts: ts || Date.now(), url }; }
+
+  try {
+    const watch = PH.watch.list();
+    const [feed, lookup] = await Promise.all([
+      PH.api('/api/alerts'),
+      watch.length ? PH.api('/api/alerts', { method: 'POST', body: { urls: watch.map((w) => w.url) } }) : Promise.resolve({ current: {} })
+    ]);
+
+    const alerts = [];
+
+    // New matches across all hunts
+    (feed.newMatches || []).forEach((m) => {
+      alerts.push(item('new', '◎',
+        'New match: <b>' + esc(m.title) + '</b>',
+        esc(m.project_name) + '  ·  ' + esc(m.seller || 'source') + '  ·  ' + esc(PH.fmtPrice(m.price)),
+        m.created_at, m.url));
+    });
+
+    // Price drops / ended on tracked (watchlist) parts
+    const current = (lookup && lookup.current) || {};
+    watch.forEach((w) => {
+      const savedNum = PH.parsePrice(w.price);
+      const cur = current[w.url];
+      if (!cur || !cur.present) {
+        alerts.push(item('ended', '✕',
+          'Listing ended: <b>' + esc(w.title) + '</b>',
+          'tracked from ' + esc(w.projectName || 'a hunt') + ' — no longer in results',
+          w.savedAt, w.url));
+      } else if (savedNum != null && cur.price_num != null && Number(cur.price_num) < savedNum - 0.5) {
+        alerts.push(item('drop', '▼',
+          'Price drop: <b>' + esc(w.title) + '</b>',
+          PH.fmtPrice(w.price) + '  →  ' + PH.fmtPrice(String(cur.price_num)) + '  ·  ' + esc(w.seller || ''),
+          Date.now(), w.url));
+      }
+    });
+
+    alerts.sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
+    if (!alerts.length) {
+      wrap.innerHTML =
+        '<div class="empty"><div class="ic">◎</div><h3>No activity yet</h3>' +
+        '<p>Once your hunts run and you start tracking parts on your watchlist, new matches, price drops and ended listings show up here.</p>' +
+        '<a class="btn" href="/index.html">Go to projects</a></div>';
+      return;
+    }
+
+    wrap.innerHTML = '<div class="feed">' + alerts.map((a) =>
+      '<div class="alert ' + a.type + '">' +
+        '<div class="ai">' + a.icon + '</div>' +
+        '<div class="txt"><div class="h">' + a.headHtml + '</div><div class="m">' + a.meta + '</div></div>' +
+        '<div class="when">' + (a.url ? '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">' + PH.ago(a.ts) + ' ↗</a>' : PH.ago(a.ts)) + '</div>' +
+      '</div>').join('') + '</div>';
+  } catch (e) {
+    wrap.innerHTML = '<div class="banner err">Could not load alerts: ' + PH.esc(e.message) + '</div>';
+  }
+});
+</script>
+</body>
+</html>

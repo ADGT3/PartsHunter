@@ -5,104 +5,143 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
 <link rel="icon" href="/assets/mark.png">
-<link rel="stylesheet" href="/assets/app.css?v=14">
-<script src="/assets/app.js?v=14" defer></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=6">
+<script src="/assets/app.js?v=6" defer></script>
 </head>
 <body>
-<header class="hero">
-  <div class="wrap">
-    <div class="hero-top">
-      <a class="brand" href="/index.html">
-        <img class="logo-full" src="/assets/logo.png" alt="Parts Sniper">
-      </a>
-      <button class="cart-btn" id="cartBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg> Cart <span class="cart-count">0</span></button>
-    </div>
-    <div class="crumb"><a href="/index.html">&#8592; All projects</a></div>
-  </div>
+<header class="ps-header">
+  <a class="ps-brand" href="/index.html">
+    <img src="/assets/logo.png" alt="Parts Sniper" onerror="this.style.display='none'">
+    <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
+  </a>
+  <nav class="ps-nav">
+    <a href="/index.html">Projects</a>
+    <a href="/watchlist.html">Watchlist <span class="count" id="navSaved"></span></a>
+    <a href="/alerts.html">Alerts</a>
+  </nav>
+  <div class="ps-spacer"></div>
+  <button class="btn" onclick="location.href='/index.html'"><span class="plus">＋</span> New hunt</button>
+  <div class="ps-avatar">PS</div>
 </header>
 
-<div class="wrap">
-  <h1 class="page" id="pName">Loading…</h1>
-  <div class="muted" id="pGoal"></div>
+<main class="ps-main">
+  <div class="crumb"><a href="/index.html">&#8592; All projects</a></div>
+
+  <div class="row-between" style="margin-top:16px">
+    <div>
+      <h1 class="page" id="pName">Loading…</h1>
+      <p class="lede" id="pGoal"></p>
+      <div class="learn" id="learn" style="display:none"><span class="pip"></span><span id="learnTxt"></span></div>
+    </div>
+  </div>
 
   <div class="toolbar">
     <button class="btn" id="runBtn">Re-run search now</button>
-    <button class="btn grey" id="refineToggle" aria-expanded="false">⚙ Refine search</button>
+    <button class="btn ghost" id="refineToggle" aria-expanded="false">&#9998; Edit search</button>
     <span id="runMsg" class="muted"></span>
   </div>
 
-  <div class="cfg" id="cfg" hidden>
-    <h4>Filters</h4>
-    <div class="filters" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:6px 0 4px;font-size:14px">
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fOem"> OEM parts</label>
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fAft"> Aftermarket parts</label>
-      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fSalv"> Salvage vehicles</label>
-      <label style="display:flex;gap:6px;align-items:center">Country
-        <select id="fCountry" style="background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-family:inherit">
-          <option value="all">All</option>
-          <option value="au">Australia</option>
-          <option value="us">United States</option>
-          <option value="gb">United Kingdom</option>
-          <option value="ca">Canada</option>
-          <option value="nz">New Zealand</option>
-          <option value="de">Germany</option>
-          <option value="fr">France</option>
-          <option value="it">Italy</option>
-          <option value="es">Spain</option>
-          <option value="nl">Netherlands</option>
-          <option value="jp">Japan</option>
-          <option value="ae">UAE</option>
-        </select>
-      </label>
+  <!-- Refine panel -->
+  <div class="panel" id="cfg" hidden style="margin-top:18px">
+    <div class="field">
+      <label>Sources</label>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="fOem"> OEM parts</label>
+        <label class="check"><input type="checkbox" id="fAft"> Aftermarket parts</label>
+        <label class="check"><input type="checkbox" id="fSalv"> Salvage vehicles</label>
+      </div>
     </div>
-    <h4>Categories</h4>
-    <div class="hint">The section headings your results are grouped under (one per line). These only <b>organise</b> the page — they don't change what's searched.</div>
-    <textarea id="cCats"></textarea>
-    <h4>Search queries</h4>
-    <div class="hint">The exact phrases searched on the web — this is what <b>finds</b> listings (one per line).</div>
-    <textarea id="cQueries"></textarea>
-    <h4>Rules</h4>
-    <div class="hint">The filters the AI must obey when deciding what to <b>keep</b> (one per line).</div>
-    <textarea id="cRules"></textarea>
-    <div class="hint" style="margin-top:12px">In short: <b>queries find</b> → <b>rules filter</b> → <b>categories sort</b>.</div>
-    <div class="row" style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+    <div class="field">
+      <label for="fCountry">Country</label>
+      <select id="fCountry">
+        <option value="all">All countries</option>
+        <option value="au">Australia</option>
+        <option value="us">United States</option>
+        <option value="gb">United Kingdom</option>
+        <option value="ca">Canada</option>
+        <option value="nz">New Zealand</option>
+        <option value="de">Germany</option>
+        <option value="fr">France</option>
+        <option value="it">Italy</option>
+        <option value="es">Spain</option>
+        <option value="nl">Netherlands</option>
+        <option value="jp">Japan</option>
+        <option value="ae">United Arab Emirates</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="cCats">Categories</label>
+      <div class="hint">Section headings your results are grouped under (one per line). They only organise the page.</div>
+      <textarea id="cCats"></textarea>
+    </div>
+    <div class="field">
+      <label for="cQueries">Search queries</label>
+      <div class="hint">The exact phrases searched on the web — this is what finds listings (one per line).</div>
+      <textarea id="cQueries"></textarea>
+    </div>
+    <div class="field">
+      <label for="cRules">Matching rules</label>
+      <div class="hint">The rules the sniper must obey when deciding what to keep (one per line).</div>
+      <textarea id="cRules"></textarea>
+    </div>
+    <div class="hint" style="margin-bottom:14px">Queries find &#8594; rules filter &#8594; categories sort. These plus your feedback are sent on every run.</div>
+    <div class="form-actions">
       <button class="btn grey" id="saveCfg">Save changes</button>
-      <span class="muted" style="align-self:center">Also saved automatically when you re-run.</span>
+      <span class="muted" style="align-self:center;font-size:13px">Also saved automatically when you re-run.</span>
     </div>
   </div>
 
+  <!-- Category / Sort controls -->
+  <div class="controls" id="controls" style="display:none">
+    <div class="ctrl"><span>Category</span>
+      <select id="catFilter"><option value="__all">All categories</option></select>
+    </div>
+    <div class="ctrl"><span>Sort</span>
+      <select id="sortBy">
+        <option value="rel">Relevance</option>
+        <option value="new">Newest</option>
+        <option value="plow">Price: low to high</option>
+        <option value="phigh">Price: high to low</option>
+      </select>
+    </div>
+    <div class="ctrl push"><span id="countTxt"></span></div>
+  </div>
+
   <div id="results"></div>
-</div>
+</main>
+
+<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
 
 <script>
-document.addEventListener('DOMContentLoaded', async function () {
+document.addEventListener('DOMContentLoaded', function () {
   const id = PH.qs('id');
   if (!id) { document.getElementById('pName').textContent = 'Missing project id'; return; }
-  PH.mountCart(id);
-  document.getElementById('cartBtn').addEventListener('click', () => PH._openCart());
-  PH.updateCartCount(id);
+  PH.updateWatchCount();
 
   const refineBtn = document.getElementById('refineToggle');
   const cfgPanel = document.getElementById('cfg');
   refineBtn.addEventListener('click', () => {
     const opening = cfgPanel.hasAttribute('hidden');
-    if (opening) { cfgPanel.removeAttribute('hidden'); refineBtn.textContent = '⚙ Hide refine'; refineBtn.setAttribute('aria-expanded', 'true'); }
-    else { cfgPanel.setAttribute('hidden', ''); refineBtn.textContent = '⚙ Refine search'; refineBtn.setAttribute('aria-expanded', 'false'); }
+    if (opening) { cfgPanel.removeAttribute('hidden'); refineBtn.textContent = 'Hide search'; refineBtn.setAttribute('aria-expanded', 'true'); }
+    else { cfgPanel.setAttribute('hidden', ''); refineBtn.innerHTML = '&#9998; Edit search'; refineBtn.setAttribute('aria-expanded', 'false'); }
+  });
+  document.querySelectorAll('.check input').forEach((cb) => {
+    const sync = () => cb.closest('.check').classList.toggle('on', cb.checked);
+    cb.addEventListener('change', sync);
   });
 
   let state = { project: null, listings: [], feedback: {} };
-
-  function fbMap(arr) { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; }
+  const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
   const linesToArr = (s) => s.split('\n').map((x) => x.trim()).filter(Boolean);
-
-  function readFilters() {
-    return {
-      oem: document.getElementById('fOem').checked,
-      aftermarket: document.getElementById('fAft').checked,
-      salvage: document.getElementById('fSalv').checked,
-      country: document.getElementById('fCountry').value
-    };
-  }
+  const readFilters = () => ({
+    oem: document.getElementById('fOem').checked,
+    aftermarket: document.getElementById('fAft').checked,
+    salvage: document.getElementById('fSalv').checked,
+    country: document.getElementById('fCountry').value
+  });
 
   async function load() {
     try {
@@ -110,17 +149,17 @@ document.addEventListener('DOMContentLoaded', async function () {
       state.project = data.project;
       state.listings = data.listings || [];
       state.feedback = fbMap(data.feedback);
+      hydrateConfig();
       render();
     } catch (e) {
       document.getElementById('results').innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>';
     }
   }
 
-  function render() {
-    const p = state.project;
+  function hydrateConfig() {
+    const p = state.project, cfg = p.config || {};
     document.getElementById('pName').textContent = p.name;
     document.getElementById('pGoal').textContent = p.goal;
-    const cfg = p.config || {};
     document.getElementById('cCats').value = (cfg.categories || []).join('\n');
     document.getElementById('cQueries').value = (cfg.queries || []).join('\n');
     document.getElementById('cRules').value = (cfg.rules || []).join('\n');
@@ -129,48 +168,83 @@ document.addEventListener('DOMContentLoaded', async function () {
     document.getElementById('fAft').checked = !!flt.aftermarket;
     document.getElementById('fSalv').checked = !!flt.salvage;
     document.getElementById('fCountry').value = flt.country || 'all';
+    document.querySelectorAll('.check input').forEach((cb) => cb.closest('.check').classList.toggle('on', cb.checked));
 
-    // Group listings by their section, then show config categories first followed by
-    // ANY other section that actually has listings — so no result is ever hidden.
-    const bySec = {}; state.listings.forEach((l) => { const s = l.section || 'Results'; (bySec[s] = bySec[s] || []).push(l); });
-    const cats = [...((cfg.categories && cfg.categories.length) ? cfg.categories : [])];
-    Object.keys(bySec).forEach((s) => { if (!cats.includes(s)) cats.push(s); });
+    // learning banner
+    const nfb = Object.keys(state.feedback).length;
+    const learn = document.getElementById('learn'), lt = document.getElementById('learnTxt');
+    learn.style.display = 'inline-flex';
+    lt.innerHTML = nfb ? ('Learning — <b>' + nfb + '</b> signal' + (nfb === 1 ? '' : 's') + ' from your feedback')
+                       : 'Rate results with 👍 / 👎 to sharpen the next run &#8594;';
 
+    // category filter options
+    const cats = [...new Set([...(cfg.categories || []), ...state.listings.map((l) => l.section || 'Results')])].filter(Boolean);
+    const sel = document.getElementById('catFilter');
+    sel.innerHTML = '<option value="__all">All categories</option>' + cats.map((c) => '<option value="' + PH.esc(c) + '">' + PH.esc(c) + '</option>').join('');
+  }
+
+  function sortItems(items) {
+    const by = document.getElementById('sortBy').value;
+    const arr = items.slice();
+    const pn = (l) => (l.price_num == null ? null : Number(l.price_num));
+    if (by === 'new') arr.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    else if (by === 'plow') arr.sort((a, b) => (pn(a) == null) - (pn(b) == null) || (pn(a) - pn(b)));
+    else if (by === 'phigh') arr.sort((a, b) => (pn(a) == null) - (pn(b) == null) || (pn(b) - pn(a)));
+    return arr;
+  }
+
+  function render() {
+    const cfg = state.project.config || {};
     const out = document.getElementById('results');
+    const controls = document.getElementById('controls');
     if (!state.listings.length) {
+      controls.style.display = 'none';
       out.innerHTML = '<div class="banner">No listings yet. Hit <b>Re-run search now</b> to fetch some.</div>';
       return;
     }
+    controls.style.display = 'flex';
+    document.getElementById('countTxt').textContent = state.listings.length + ' matches';
+
+    const catFilter = document.getElementById('catFilter').value;
+    const bySec = {};
+    state.listings.forEach((l) => { const s = l.section || 'Results'; (bySec[s] = bySec[s] || []).push(l); });
+    let cats = [...((cfg.categories && cfg.categories.length) ? cfg.categories : [])];
+    Object.keys(bySec).forEach((s) => { if (!cats.includes(s)) cats.push(s); });
+    if (catFilter !== '__all') cats = cats.filter((c) => c === catFilter);
+
     let html = '';
     cats.forEach((sec) => {
-      const items = bySec[sec] || []; if (!items.length) return;
+      const items = sortItems(bySec[sec] || []); if (!items.length) return;
       html += '<div class="section-title">' + PH.esc(sec) + ' <span class="tag">' + items.length + '</span></div><div class="grid">';
       items.forEach((l) => { html += cardHtml(l); });
       html += '</div>';
     });
-    out.innerHTML = html;
+    out.innerHTML = html || '<div class="banner">Nothing in this category.</div>';
     wireCards();
   }
 
   function cardHtml(l) {
     const v = state.feedback[l.url] || 0;
-    const inCart = PH.cart.has(id, l.url);
+    const saved = PH.watch.has(l.url);
     const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
-    const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">no image</span>';
-    
-    const source = l.source || 'unknown';
-    const sourceBadge = `<span class="source-badge ${source}">${source.toUpperCase()}</span>`;
-
+    const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">NO IMAGE</span>';
+    const source = (l.source || 'unknown');
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
-      '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img + sourceBadge +
-        '<div class="vote"><button class="up' + (v > 0 ? ' active' : '') + '" title="Good match">👍</button>' +
-        '<button class="down' + (v < 0 ? ' active' : '') + '" title="Poor match">👎</button></div></div>' +
-      '<div class="body"><div class="ptitle">' + PH.esc(l.title) + '</div>' +
-      '<div class="desc">' + PH.esc(l.description || '') + '</div>' +
-      '<div class="badges">' + badges + '</div>' +
-      '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
-      '<div class="foot-actions"><button class="cart-add' + (inCart ? ' in' : '') + '">' + (inCart ? '✓ In list' : 'Add') + '</button>' +
-      '<a class="btn" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View</a></div></div></div></div>';
+      '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img +
+        '<span class="source-badge ' + PH.esc(source) + '">' + PH.esc(source.toUpperCase()) + '</span>' +
+        '<div class="vote">' +
+          '<button class="save' + (saved ? ' on' : '') + '" title="Save to watchlist">' + (saved ? '★' : '☆') + '</button>' +
+          '<button class="up' + (v > 0 ? ' active' : '') + '" title="Good match">👍</button>' +
+          '<button class="down' + (v < 0 ? ' active' : '') + '" title="Poor match">👎</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="body">' +
+        '<div class="ptitle">' + PH.esc(l.title) + '</div>' +
+        (l.description ? '<div class="desc">' + PH.esc(l.description) + '</div>' : '') +
+        (badges ? '<div class="badges">' + badges + '</div>' : '') +
+        '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
+        '<div class="foot-actions"><a class="view" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View &#8599;</a></div></div>' +
+      '</div></div>';
   }
 
   function wireCards() {
@@ -179,11 +253,12 @@ document.addEventListener('DOMContentLoaded', async function () {
       const l = state.listings.find((x) => x.url === url);
       card.querySelector('.up').addEventListener('click', () => vote(l, state.feedback[url] > 0 ? 0 : 1));
       card.querySelector('.down').addEventListener('click', () => vote(l, state.feedback[url] < 0 ? 0 : -1));
-      card.querySelector('.cart-add').addEventListener('click', (e) => {
-        PH.cart.toggle(id, { url: l.url, title: l.title, price: l.price, seller: l.seller, image: l.image, section: l.section });
-        const inCart = PH.cart.has(id, url);
-        e.target.classList.toggle('in', inCart); e.target.textContent = inCart ? '✓ In list' : 'Add';
-        PH.updateCartCount(id);
+      card.querySelector('.save').addEventListener('click', (e) => {
+        PH.watch.toggle({ url: l.url, title: l.title, price: l.price, seller: l.seller, image: l.image, section: l.section, projectId: id, projectName: state.project.name });
+        const on = PH.watch.has(url);
+        e.target.classList.toggle('on', on); e.target.textContent = on ? '★' : '☆';
+        PH.updateWatchCount();
+        PH.toast(on ? 'Saved to watchlist' : 'Removed from watchlist');
       });
     });
   }
@@ -192,21 +267,27 @@ document.addEventListener('DOMContentLoaded', async function () {
     try {
       await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: l.url, title: l.title, seller: l.seller, vote: value } });
       if (value === 0) delete state.feedback[l.url]; else state.feedback[l.url] = value;
-      render();
+      hydrateConfig(); render();
       PH.toast(value === 0 ? 'Feedback cleared' : (value > 0 ? 'Marked good' : 'Marked poor'));
     } catch (e) { PH.toast('Vote failed: ' + e.message); }
   }
 
-  document.getElementById('saveCfg').addEventListener('click', async () => {
-    const config = {
+  function currentConfig() {
+    return {
       categories: linesToArr(document.getElementById('cCats').value),
       queries: linesToArr(document.getElementById('cQueries').value),
       rules: linesToArr(document.getElementById('cRules').value),
       filters: readFilters()
     };
+  }
+
+  document.getElementById('catFilter').addEventListener('change', render);
+  document.getElementById('sortBy').addEventListener('change', render);
+
+  document.getElementById('saveCfg').addEventListener('click', async () => {
     try {
-      const { project } = await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
-      state.project = project; PH.toast('Config saved');
+      const { project } = await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config: currentConfig() } });
+      state.project = project; PH.toast('Search saved');
     } catch (e) { PH.toast('Save failed: ' + e.message); }
   });
 
@@ -214,19 +295,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     const btn = document.getElementById('runBtn');
     const msg = document.getElementById('runMsg');
     btn.disabled = true;
-    msg.innerHTML = '<span class="spinner"></span> Searching the web with AI… this can take a couple of minutes.';
+    msg.innerHTML = '<span class="spinner"></span> Sniping the web with AI… this can take a couple of minutes.';
     try {
-      const config = {
-        categories: linesToArr(document.getElementById('cCats').value),
-        queries: linesToArr(document.getElementById('cQueries').value),
-        rules: linesToArr(document.getElementById('cRules').value),
-        filters: readFilters()
-      };
-      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
+      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config: currentConfig() } });
       const r = await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
       state.listings = r.listings || [];
-      render();
-      msg.textContent = 'Done — ' + r.count + ' listings.';
+      hydrateConfig(); render();
+      msg.textContent = 'Done — ' + r.count + ' matches.';
     } catch (e) {
       msg.innerHTML = '<span style="color:#f0a1a1">' + PH.esc(e.message) + '</span>';
     } finally { btn.disabled = false; }
