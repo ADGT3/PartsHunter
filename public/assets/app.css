@@ -1,4 +1,4 @@
-/* Parts Sniper — dark "sniper" design system (v6)
+/* Parts Sniper — dark "sniper" design system (v8)
  * Shared across dashboard, project, watchlist and alerts pages.
  * Fonts (Archivo, JetBrains Mono) are loaded via <link> in each page head. */
 
@@ -217,8 +217,15 @@ h1.page { font-family: var(--head); font-weight: 800; font-size: 40px; margin: 0
 .card .foot { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; padding-top: 14px; }
 .card .price { font-family: var(--head); font-weight: 700; font-size: 17px; color: var(--text); }
 .card .src { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 3px; }
-.card .foot-actions { display: flex; gap: 8px; align-items: center; }
-.card .view { font-family: var(--mono); font-size: 12px; color: var(--accent); border: 1px solid var(--line-2); border-radius: 8px; padding: 7px 11px; }
+
+/* View button — never wrap, hold its width even next to long price/title */
+.card .foot-actions { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+.card .view {
+  display: inline-flex; align-items: center; gap: 4px;
+  white-space: nowrap; flex: 0 0 auto;
+  font-family: var(--mono); font-size: 12px; color: var(--accent);
+  border: 1px solid var(--line-2); border-radius: 8px; padding: 7px 12px;
+}
 .card .view:hover { border-color: var(--accent-2); }
 
 /* ---------- Watchlist / Alerts empty + feed ---------- */
