@@ -4,17 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Project</title>
-<link rel="icon" href="/assets/mark.png">
+<link rel="icon" href="/assets/mark.png?v=6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css?v=6">
-<script src="/assets/app.js?v=6" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=7">
+<script src="/assets/app.js?v=7" defer></script>
 </head>
 <body>
 <header class="ps-header">
   <a class="ps-brand" href="/index.html">
-    <img src="/assets/logo.png" alt="Parts Sniper" onerror="this.style.display='none'">
+    <img src="/assets/logo.png?v=6" alt="Parts Sniper" onerror="this.style.display='none'">
     <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
   </a>
   <nav class="ps-nav">
@@ -227,7 +227,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const v = state.feedback[l.url] || 0;
     const saved = PH.watch.has(l.url);
     const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
-    const img = l.image ? '<img src="' + PH.esc(l.image) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">NO IMAGE</span>';
+    const isrc = PH.imgUrl(l.image);
+    const img = isrc ? '<img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">NO IMAGE</span>';
     const source = (l.source || 'unknown');
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
       '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img +
