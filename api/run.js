@@ -6,6 +6,9 @@ import { runSalvageSearch } from './_salvage.js';
 
 const CAP = Number(process.env.RUN_CAP_PER_DAY || 20);
 
+// Force image URLs to https so they aren't blocked as mixed content on the https site.
+function httpsImg(u){ if(!u) return ''; u=String(u).trim(); if(u.startsWith('//')) return 'https:'+u; return u.replace(/^http:\/\//i,'https://'); }
+
 async function ogImage(url) {
   try {
     const c = new AbortController();
@@ -74,9 +77,13 @@ function dropSold(listings) {
 }
 
 const JUNK_URL_RE = /(reddit\.com|youtube\.com|youtu\.be|wikipedia\.org|facebook\.com|twitter\.com|x\.com|instagram\.com|911uk\.com|\/threads?\/|showthread|viewtopic|\/wiki\/)/i;
+// Generic search / category / listing-index pages masquerading as a single listing.
+// (Specific lot/product pages are kept: /lot/123, /VehicleDetail/123, /auction/lots/123, /used/details/..., /products/...)
+const SEARCH_URL_RE = /(\/vehiclelisting\/|lotsearchresults|vehicle-search-model|\/damaged-vehicles\/search|\/used\/search\/|carfast\.express\/auction\/(brand|body_type|vehicle_type|fuel|retail_price|generation)-|\/collections\/|[?&](q|query|keyword|search|free)=|\/search(?:\/|\?|$))/i;
 function dropJunk(listings) {
   return listings.filter(l => {
     if (JUNK_URL_RE.test(l.url || '')) return false;
+    if (SEARCH_URL_RE.test(l.url || '')) return false;
     if (/reported|at time of|forum/i.test(l.price || '')) return false;
     return true;
   });
@@ -246,7 +253,7 @@ export default async function handler(req, res) {
           ${l.condition || ''},
           ${l.seller || 'Other'},
           ${l.url || ''},
-          ${l.image || ''},
+          ${httpsImg(l.image)},
           ${JSON.stringify(badges)}::jsonb,
           ${l.source || 'unknown'}
         )`;
