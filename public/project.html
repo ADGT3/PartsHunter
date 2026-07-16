@@ -117,6 +117,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+  const imgUrl = function (u) { if (!u) return ''; u = String(u).trim(); return u.slice(0,2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
   const id = PH.qs('id');
   if (!id) { document.getElementById('pName').textContent = 'Missing project id'; return; }
   PH.updateWatchCount();
@@ -227,7 +228,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const v = state.feedback[l.url] || 0;
     const saved = PH.watch.has(l.url);
     const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
-    const isrc = PH.imgUrl(l.image);
+    const isrc = imgUrl(l.image);
     const img = isrc ? '<img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">NO IMAGE</span>';
     const source = (l.source || 'unknown');
     return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
