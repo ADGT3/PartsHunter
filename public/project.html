@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css?v=7">
-<script src="/assets/app.js?v=7" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=8">
+<script src="/assets/app.js?v=8" defer></script>
 </head>
 <body>
 <header class="ps-header">
@@ -74,7 +74,7 @@
     </div>
     <div class="field">
       <label for="cCats">Categories</label>
-      <div class="hint">Section headings your results are grouped under (one per line). They only organise the page.</div>
+      <div class="hint">Section headings your results are grouped under (one per line). Every result is placed under one of these — nothing else is invented.</div>
       <textarea id="cCats"></textarea>
     </div>
     <div class="field">
@@ -144,6 +144,23 @@ document.addEventListener('DOMContentLoaded', function () {
     country: document.getElementById('fCountry').value
   });
 
+  // Snap a listing into one of the project's defined categories. Never invents a section.
+  function snapCategory(l, cats) {
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const sec = norm(l.section);
+    for (const c of cats) if (norm(c) === sec) return c;                 // exact match
+    const stop = new Set(['and', 'the', 'for', 'with', 'parts', 'part', 'oem', 'system']);
+    const words = (s) => norm(s).split(' ').filter((w) => w.length > 2 && !stop.has(w));
+    const hay = words((l.section || '') + ' ' + (l.title || ''));
+    let best = cats[0], bestScore = -1;
+    for (const c of cats) {
+      let score = 0;
+      for (const cw of words(c)) if (hay.some((h) => h === cw || (cw.length > 3 && (h.includes(cw) || cw.includes(h))))) score++;
+      if (score > bestScore) { bestScore = score; best = c; }
+    }
+    return best;
+  }
+
   async function load() {
     try {
       const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
@@ -178,8 +195,8 @@ document.addEventListener('DOMContentLoaded', function () {
     lt.innerHTML = nfb ? ('Learning — <b>' + nfb + '</b> signal' + (nfb === 1 ? '' : 's') + ' from your feedback')
                        : 'Rate results with 👍 / 👎 to sharpen the next run &#8594;';
 
-    // category filter options
-    const cats = [...new Set([...(cfg.categories || []), ...state.listings.map((l) => l.section || 'Results')])].filter(Boolean);
+    // category filter — ONLY the project's defined categories (no invented ones)
+    const cats = (cfg.categories || []).filter(Boolean);
     const sel = document.getElementById('catFilter');
     sel.innerHTML = '<option value="__all">All categories</option>' + cats.map((c) => '<option value="' + PH.esc(c) + '">' + PH.esc(c) + '</option>').join('');
   }
@@ -206,15 +223,24 @@ document.addEventListener('DOMContentLoaded', function () {
     controls.style.display = 'flex';
     document.getElementById('countTxt').textContent = state.listings.length + ' matches';
 
+    // Group STRICTLY into the project's defined Categories. Every listing is snapped
+    // into one of them — no display section is ever invented from a listing's raw
+    // section. (Only if a project genuinely has no categories do we fall back to
+    // whatever sections exist.)
+    const defined = (cfg.categories || []).filter(Boolean);
+    const useDefined = defined.length > 0;
+    const cats = useDefined ? defined.slice() : [...new Set(state.listings.map((l) => l.section || 'Results'))];
+    const bySec = {}; cats.forEach((c) => (bySec[c] = []));
+    state.listings.forEach((l) => {
+      const c = useDefined ? snapCategory(l, cats) : (l.section || 'Results');
+      (bySec[c] = bySec[c] || []).push(l);
+    });
+
     const catFilter = document.getElementById('catFilter').value;
-    const bySec = {};
-    state.listings.forEach((l) => { const s = l.section || 'Results'; (bySec[s] = bySec[s] || []).push(l); });
-    let cats = [...((cfg.categories && cfg.categories.length) ? cfg.categories : [])];
-    Object.keys(bySec).forEach((s) => { if (!cats.includes(s)) cats.push(s); });
-    if (catFilter !== '__all') cats = cats.filter((c) => c === catFilter);
+    const show = catFilter === '__all' ? cats : cats.filter((c) => c === catFilter);
 
     let html = '';
-    cats.forEach((sec) => {
+    show.forEach((sec) => {
       const items = sortItems(bySec[sec] || []); if (!items.length) return;
       html += '<div class="section-title">' + PH.esc(sec) + ' <span class="tag">' + items.length + '</span></div><div class="grid">';
       items.forEach((l) => { html += cardHtml(l); });
@@ -289,7 +315,7 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('saveCfg').addEventListener('click', async () => {
     try {
       const { project } = await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config: currentConfig() } });
-      state.project = project; PH.toast('Search saved');
+      state.project = project; hydrateConfig(); render(); PH.toast('Search saved');
     } catch (e) { PH.toast('Save failed: ' + e.message); }
   });
 
