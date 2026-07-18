@@ -7,31 +7,10 @@
 <link rel="icon" href="/assets/mark.png?v=6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="/assets/app.js?v=8" defer></script>
-<style>
-  .tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel-2); margin-bottom: 22px; width: fit-content; }
-  .tab { font-size: 13.5px; padding: 8px 16px; border-radius: 7px; color: var(--muted); cursor: pointer; }
-  .tab.on { background: var(--accent-2); color: var(--bg); font-weight: 700; }
-  .drop { border: 1.5px dashed var(--line-3); border-radius: 14px; background: var(--panel-2); padding: 46px 24px; text-align: center; cursor: pointer; transition: border-color .15s; }
-  .drop:hover, .drop.hot { border-color: var(--accent-2); }
-  .drop .ic { font-size: 34px; color: var(--accent); }
-  .drop h4 { font-family: var(--head); font-weight: 700; font-size: 17px; margin: 12px 0 6px; color: var(--text); }
-  .drop p { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
-  .pv-strip { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; border: 1px solid #2e6a45; background: #12201a; border-radius: 10px; margin-bottom: 16px; }
-  .pv-strip .l { font-size: 14px; color: #cdeadb; }
-  .pv-strip .l b { color: #58c98a; }
-  .pv-strip .x { cursor: pointer; color: var(--dim); font-size: 18px; }
-  .pv-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-  .pv-head, .pv-row { display: grid; grid-template-columns: 1fr 150px 46px 100px; gap: 10px; padding: 9px 14px; align-items: center; }
-  .pv-head { background: var(--panel-2); font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; color: var(--dim); }
-  .pv-row { border-top: 1px solid var(--line); font-size: 13px; }
-  .pv-row .m { font-family: var(--mono); font-size: 12px; color: var(--soft); }
-  .pv-row .dim { color: var(--dim); }
-  .pv-scroll { max-height: 360px; overflow: auto; }
-</style>
 </head>
 <body>
 <header class="ps-header">
@@ -51,67 +30,50 @@
 
 <main class="ps-main">
   <!-- ===== NEW HUNT ===== -->
-  <section id="newHunt" class="ps-rise" style="display:none; max-width:760px">
-    <div class="crumb"><a href="#" id="backProjects">&#8592; Back to projects</a></div>
-    <div class="eyebrow" style="margin-top:16px">// NEW HUNT</div>
-    <h1 class="page">Set your target</h1>
-    <p class="lede">Describe one part, or upload a whole estimate and let the sniper price every line.</p>
+  <section id="newHunt" style="display:none;max-width:680px;margin:0 auto">
+    <div id="backProjects" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#9aa0a6;cursor:pointer;margin-bottom:22px">&#8592; Back to projects</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:#ff6a3d;margin-bottom:10px">// NEW HUNT</div>
+    <h1 style="font-family:Archivo,sans-serif;font-weight:800;font-size:34px;margin:0 0 8px;letter-spacing:-.02em">Set your target</h1>
+    <p style="color:#9aa0a6;font-size:14.5px;margin:0 0 24px;line-height:1.55">Describe one part, or upload a full parts list / estimate and hunt every line at once.</p>
 
-    <div class="tabs" style="margin-top:22px">
-      <div class="tab on" data-tab="one">Describe a part</div>
-      <div class="tab" data-tab="list">Upload a parts list</div>
+    <div style="display:flex;gap:6px;padding:5px;background:#0f1113;border:1px solid #23272c;border-radius:11px;margin-bottom:22px">
+      <div class="tab" data-tab="describe" style="flex:1;text-align:center;padding:11px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;background:#1f2327;color:#e9ebed">Describe a part</div>
+      <div class="tab" data-tab="upload" style="flex:1;text-align:center;padding:11px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;color:#8b9096">Upload a parts list</div>
     </div>
 
-    <!-- Tab: describe a part -->
-    <div class="panel" id="tabOne">
-      <div class="field">
-        <label for="pname">Project name</label>
-        <input type="text" id="pname" placeholder="e.g. McLaren 720S — carbon seats">
+    <!-- describe -->
+    <div id="tabDescribe" style="background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px">
+      <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">PROJECT NAME</label>
+      <input id="pname" placeholder="e.g. E30 M3 front bumper" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:22px">
+      <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">WHAT ARE YOU HUNTING FOR?</label>
+      <textarea id="pgoal" rows="4" placeholder="Genuine OEM front bumper cover for a 1988 BMW E30 M3, unpainted or in original Alpine White, no cracks or repairs, willing to ship internationally." style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:14.5px;line-height:1.55;resize:vertical;margin-bottom:22px"></textarea>
+      <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES</label>
+      <div id="srcChips" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px"></div>
+      <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">COUNTRY</label>
+      <select id="fCountry" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:24px">
+        <option value="all">All countries</option><option value="au">Australia</option><option value="us">United States</option>
+        <option value="gb">United Kingdom</option><option value="ca">Canada</option><option value="nz">New Zealand</option>
+        <option value="de">Germany</option><option value="jp">Japan</option><option value="ae">United Arab Emirates</option>
+      </select>
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:13px 15px;background:rgba(255,90,44,.08);border:1px solid rgba(255,90,44,.22);border-radius:10px;margin-bottom:26px">
+        <span style="color:#ff6a3d;font-size:15px;line-height:1.4">◆</span>
+        <span style="font-size:13px;color:#c8cccf;line-height:1.5">On save, the sniper drafts your search queries &amp; matching rules. You can edit everything before running.</span>
       </div>
-      <div class="field">
-        <label for="pgoal">What are you hunting for?</label>
-        <textarea id="pgoal" placeholder="e.g. OEM carbon sports seats for a McLaren 720S — complete seats not inserts, red stitching."></textarea>
-      </div>
-      <div class="field">
-        <label>Sources</label>
-        <div class="checks">
-          <label class="check"><input type="checkbox" id="fOem"> OEM parts</label>
-          <label class="check"><input type="checkbox" id="fAft"> Aftermarket parts</label>
-          <label class="check"><input type="checkbox" id="fSalv"> Salvage vehicles</label>
-        </div>
-      </div>
-      <div class="field">
-        <label for="fCountry">Country</label>
-        <select id="fCountry">
-          <option value="all">All countries</option>
-          <option value="au">Australia</option>
-          <option value="us">United States</option>
-          <option value="gb">United Kingdom</option>
-          <option value="ca">Canada</option>
-          <option value="nz">New Zealand</option>
-          <option value="de">Germany</option>
-          <option value="jp">Japan</option>
-          <option value="ae">United Arab Emirates</option>
-        </select>
-      </div>
-      <div class="hint" style="margin-bottom:16px">On save, the sniper drafts your search queries &amp; matching rules. You can edit everything before running.</div>
-      <div class="form-actions">
-        <button class="btn" id="createBtn">Draft my search &#8594;</button>
-        <button class="btn grey" id="cancelBtn">Cancel</button>
+      <div style="display:flex;gap:12px">
+        <div id="createBtn" style="padding:13px 22px;border-radius:9px;font-weight:700;font-size:14.5px;cursor:pointer;background:#26292e;color:#6b7076">Draft my search &#8594;</div>
+        <div id="cancelBtn" style="padding:13px 22px;border-radius:9px;border:1px solid #2a2e34;color:#a3a8af;font-weight:600;font-size:14.5px;cursor:pointer">Cancel</div>
       </div>
       <div id="createMsg" style="margin-top:14px"></div>
     </div>
 
-    <!-- Tab: upload a parts list -->
-    <div id="tabList" style="display:none">
-      <div id="dropWrap">
-        <div class="drop" id="drop">
-          <div class="ic">⭱</div>
-          <h4>Drop an estimate or parts list here</h4>
-          <p>.xlsx or .csv — columns Description, Part Number, Qty, Amount</p>
-          <button class="btn grey" id="browseBtn">Browse files</button>
-          <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none">
-        </div>
+    <!-- upload -->
+    <div id="tabUpload" style="display:none;background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px">
+      <div id="dropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:52px 20px;border:1.5px dashed #2f343a;border-radius:14px;cursor:pointer;color:#8b9096">
+        <div style="width:52px;height:52px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:24px">⭱</div>
+        <div style="font-size:15px;font-weight:600;color:#e9ebed">Drop an estimate or parts list here</div>
+        <div style="font-size:13px;text-align:center;max-width:360px;line-height:1.5">Accepts .xlsx or .csv estimates. Sniper reads each line — description, part number, qty and estimate price — and hunts a cheaper source for every part.</div>
+        <div style="margin-top:4px;padding:9px 16px;border-radius:8px;background:#ff5a2c;color:#0d0e10;font-weight:700;font-size:13.5px">Browse files</div>
+        <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none">
       </div>
       <div id="preview" style="display:none"></div>
       <div id="listMsg" style="margin-top:14px"></div>
@@ -119,17 +81,17 @@
   </section>
 
   <!-- ===== PROJECTS ===== -->
-  <section id="projects" class="ps-rise">
-    <div class="row-between">
+  <section id="projects">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
       <div>
-        <div class="eyebrow">// ACTIVE HUNTS</div>
-        <h1 class="page">Projects</h1>
-        <p class="lede">Each project is its own search that learns from your feedback. Create one from a plain-language goal — or upload an estimate to price every line.</p>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:#ff6a3d;margin-bottom:10px">// ACTIVE HUNTS</div>
+        <h1 style="font-family:Archivo,sans-serif;font-weight:800;font-size:40px;margin:0;letter-spacing:-.02em">Projects</h1>
+        <p style="color:#9aa0a6;font-size:15px;max-width:560px;margin:12px 0 0;line-height:1.55">Each project is its own search that learns from your feedback. Create one from a plain-language goal — or upload an estimate to price every line.</p>
       </div>
       <button class="btn" id="newBtn"><span class="plus">＋</span> New hunt</button>
     </div>
 
-    <div class="stats" id="stats">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:26px 0 30px">
       <div class="stat"><div class="k">ACTIVE HUNTS</div><div class="v" id="sActive">–</div></div>
       <div class="stat"><div class="k">TOTAL MATCHES</div><div class="v" id="sMatches">–</div></div>
       <div class="stat"><div class="k">RUN TODAY</div><div class="v accent" id="sToday">–</div></div>
@@ -140,210 +102,176 @@
   </section>
 </main>
 
-<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
+<footer style="border-top:1px solid #1a1d20;padding:22px 24px;text-align:center">
+  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4e5359;letter-spacing:.1em">PARTS SNIPER — PRECISION PART HUNTING</span>
+</footer>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  const grid = document.getElementById('grid');
-  const projSec = document.getElementById('projects');
-  const newSec = document.getElementById('newHunt');
   PH.updateWatchCount();
+  const $ = (i) => document.getElementById(i);
+  const grid = $('grid'), projSec = $('projects'), newSec = $('newHunt');
   const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString('en-AU');
+  const src = { oem: false, aftermarket: false, salvage: false };
 
-  function showNew(v) {
-    newSec.style.display = v ? 'block' : 'none';
-    projSec.style.display = v ? 'none' : 'block';
-    if (v) document.getElementById('pname').focus();
-    window.scrollTo(0, 0);
-  }
-  document.getElementById('newBtn').addEventListener('click', () => showNew(true));
-  document.getElementById('newBtnTop').addEventListener('click', () => showNew(true));
-  document.getElementById('cancelBtn').addEventListener('click', () => showNew(false));
-  document.getElementById('backProjects').addEventListener('click', (e) => { e.preventDefault(); showNew(false); });
+  function showNew(v) { newSec.style.display = v ? 'block' : 'none'; projSec.style.display = v ? 'none' : 'block'; if (v) $('pname').focus(); window.scrollTo(0, 0); }
+  $('newBtn').addEventListener('click', () => showNew(true));
+  $('newBtnTop').addEventListener('click', () => showNew(true));
+  $('cancelBtn').addEventListener('click', () => showNew(false));
+  $('backProjects').addEventListener('click', () => showNew(false));
 
-  // tab toggle
+  // tabs
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === t));
-    const list = t.dataset.tab === 'list';
-    document.getElementById('tabOne').style.display = list ? 'none' : 'block';
-    document.getElementById('tabList').style.display = list ? 'block' : 'none';
+    document.querySelectorAll('.tab').forEach((x) => { const on = x === t; x.style.background = on ? '#1f2327' : 'transparent'; x.style.color = on ? '#e9ebed' : '#8b9096'; });
+    const up = t.dataset.tab === 'upload';
+    $('tabDescribe').style.display = up ? 'none' : 'block';
+    $('tabUpload').style.display = up ? 'block' : 'none';
   }));
 
-  document.querySelectorAll('.check input').forEach((cb) => {
-    const sync = () => cb.closest('.check').classList.toggle('on', cb.checked);
-    cb.addEventListener('change', sync); sync();
-  });
-  const readFilters = () => ({
-    oem: document.getElementById('fOem').checked,
-    aftermarket: document.getElementById('fAft').checked,
-    salvage: document.getElementById('fSalv').checked,
-    country: document.getElementById('fCountry').value
-  });
+  // source chips
+  const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
+  function drawSrc() {
+    $('srcChips').innerHTML = SRC.map(([k, label]) => {
+      const on = src[k];
+      const style = 'display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s;' +
+        (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:#0f1113;border:1px solid #2a2e34;color:#8b9096;');
+      const dot = 'width:8px;height:8px;border-radius:50%;background:' + (on ? '#ff5a2c' : '#3a4046') + ';';
+      return '<div class="src" data-k="' + k + '" style="' + style + '"><span style="' + dot + '"></span>' + label + '</div>';
+    }).join('');
+    $('srcChips').querySelectorAll('.src').forEach((el) => el.addEventListener('click', () => { src[el.dataset.k] = !src[el.dataset.k]; drawSrc(); }));
+  }
+  drawSrc();
 
-  /* ---------- describe-a-part create ---------- */
-  document.getElementById('createBtn').addEventListener('click', async () => {
-    const name = document.getElementById('pname').value.trim();
-    const goal = document.getElementById('pgoal').value.trim();
-    const msg = document.getElementById('createMsg');
-    if (!name || !goal) { msg.innerHTML = '<div class="banner err">Name and goal are both required.</div>'; return; }
-    msg.innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search with AI…</div>';
+  // create button enable state
+  function refreshCreate() {
+    const can = $('pname').value.trim() && $('pgoal').value.trim();
+    const b = $('createBtn');
+    b.style.background = can ? '#ff5a2c' : '#26292e';
+    b.style.color = can ? '#0d0e10' : '#6b7076';
+    b.dataset.can = can ? '1' : '';
+  }
+  $('pname').addEventListener('input', refreshCreate);
+  $('pgoal').addEventListener('input', refreshCreate);
+
+  $('createBtn').addEventListener('click', async () => {
+    if (!$('createBtn').dataset.can) return;
+    const name = $('pname').value.trim(), goal = $('pgoal').value.trim();
+    const filters = { oem: src.oem, aftermarket: src.aftermarket, salvage: src.salvage, country: $('fCountry').value };
+    $('createMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search…</div>';
     try {
-      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters: readFilters() } });
-      location.href = 'project.html?id=' + encodeURIComponent(project.id);
-    } catch (e) { msg.innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
+      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters } });
+      location.href = 'draft.html?id=' + encodeURIComponent(project.id) + '&new=1';
+    } catch (e) { $('createMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
   });
 
-  /* ---------- upload a parts list ---------- */
+  /* ---------- upload / parse ---------- */
   let parsed = { name: '', lines: [] };
-  const fileInput = document.getElementById('fileInput');
-  document.getElementById('browseBtn').addEventListener('click', () => fileInput.click());
-  document.getElementById('drop').addEventListener('click', (e) => { if (e.target.id !== 'browseBtn') fileInput.click(); });
-  const drop = document.getElementById('drop');
-  ['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('hot'); }));
-  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('hot')));
-  drop.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]); });
+  const fileInput = $('fileInput');
+  $('dropZone').addEventListener('click', () => fileInput.click());
+  ['dragover', 'dragenter'].forEach((ev) => $('dropZone').addEventListener(ev, (e) => { e.preventDefault(); $('dropZone').style.borderColor = '#ff5a2c'; }));
+  ['dragleave', 'drop'].forEach((ev) => $('dropZone').addEventListener(ev, () => { $('dropZone').style.borderColor = '#2f343a'; }));
+  $('dropZone').addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]); });
   fileInput.addEventListener('change', (e) => { if (e.target.files[0]) parseFile(e.target.files[0]); });
 
   function num(v) { if (v == null || v === '') return null; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; }
-
   function rowsToLines(rows) {
     let hi = -1, col = {};
     for (let i = 0; i < Math.min(rows.length, 12); i++) {
       const r = (rows[i] || []).map((x) => String(x == null ? '' : x).toLowerCase().trim());
       const d = r.findIndex((c) => c.includes('description'));
       const pn = r.findIndex((c) => c.includes('part') && (c.includes('number') || c.includes('no') || c.includes('#')));
-      if (d !== -1 && pn !== -1) {
-        hi = i;
-        col = { desc: d, pn, qty: r.findIndex((c) => c === 'qty' || c.includes('quantity')), est: r.findIndex((c) => c.includes('amount') || c.includes('price') || c.includes('total')) };
-        break;
-      }
+      if (d !== -1 && pn !== -1) { hi = i; col = { desc: d, pn, qty: r.findIndex((c) => c === 'qty' || c.includes('quantity')), est: r.findIndex((c) => c.includes('amount') || c.includes('price') || c.includes('total')) }; break; }
     }
     if (hi === -1) return [];
     const out = [];
     for (let i = hi + 1; i < rows.length; i++) {
       const r = rows[i] || [];
-      const desc = String(r[col.desc] == null ? '' : r[col.desc]).trim();
-      const pn = String(r[col.pn] == null ? '' : r[col.pn]).trim();
+      const desc = String(r[col.desc] == null ? '' : r[col.desc]).trim(), pn = String(r[col.pn] == null ? '' : r[col.pn]).trim();
       if (!desc && !pn) continue;
       out.push({ desc, pn, qty: col.qty >= 0 ? num(r[col.qty]) : null, est: col.est >= 0 ? num(r[col.est]) : null });
     }
     return out;
   }
-
   function parseFile(file) {
     const ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (ext !== 'xlsx' && ext !== 'csv') { document.getElementById('listMsg').innerHTML = '<div class="banner err">Please upload a .xlsx or .csv file.</div>'; return; }
-    if (typeof XLSX === 'undefined') { document.getElementById('listMsg').innerHTML = '<div class="banner err">Spreadsheet reader still loading — try again in a second.</div>'; return; }
+    if (ext !== 'xlsx' && ext !== 'csv') { $('listMsg').innerHTML = '<div class="banner err">Please upload a .xlsx or .csv file.</div>'; return; }
+    if (typeof XLSX === 'undefined') { $('listMsg').innerHTML = '<div class="banner err">Reader still loading — try again in a second.</div>'; return; }
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const wb = ext === 'csv' ? XLSX.read(e.target.result, { type: 'string' }) : XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
         const lines = rowsToLines(rows);
-        if (!lines.length) { document.getElementById('listMsg').innerHTML = '<div class="banner err">Couldn\'t find Description / Part Number columns in that file.</div>'; return; }
-        parsed = { name: file.name.replace(/\.(xlsx|csv)$/i, ''), lines };
-        showPreview(file.name);
-      } catch (err) { document.getElementById('listMsg').innerHTML = '<div class="banner err">Could not read that file: ' + PH.esc(err.message) + '</div>'; }
+        if (!lines.length) { $('listMsg').innerHTML = '<div class="banner err">Couldn\'t find Description / Part Number columns.</div>'; return; }
+        parsed = { name: file.name.replace(/\.(xlsx|csv)$/i, ''), lines }; showPreview(file.name);
+      } catch (err) { $('listMsg').innerHTML = '<div class="banner err">Could not read that file: ' + PH.esc(err.message) + '</div>'; }
     };
     if (ext === 'csv') reader.readAsText(file); else reader.readAsArrayBuffer(file);
   }
-
   function showPreview(filename) {
-    document.getElementById('listMsg').innerHTML = '';
-    document.getElementById('dropWrap').style.display = 'none';
+    $('listMsg').innerHTML = ''; $('dropZone').style.display = 'none';
     const estTotal = parsed.lines.reduce((n, l) => n + (l.est || 0), 0);
-    const rowsHtml = parsed.lines.map((l) =>
-      '<div class="pv-row"><div>' + PH.esc(l.desc || '') + '</div>' +
-      '<div class="m">' + PH.esc(l.pn || '—') + '</div>' +
-      '<div class="m">' + (l.qty != null ? l.qty : '<span class="dim">—</span>') + '</div>' +
-      '<div class="m">' + (l.est != null ? money(l.est) : '<span class="dim">—</span>') + '</div></div>'
+    const rows = parsed.lines.map((l) =>
+      '<div style="display:grid;grid-template-columns:1fr 130px 46px 92px;gap:10px;padding:11px 14px;border-top:1px solid #1c1f23;align-items:center;font-size:13px">' +
+      '<span style="color:#e9ebed;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + PH.esc(l.desc || '') + '</span>' +
+      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#9aa0a6">' + PH.esc(l.pn || '—') + '</span>' +
+      '<span style="font-family:\'JetBrains Mono\',monospace;color:#9aa0a6">' + (l.qty != null ? l.qty : '—') + '</span>' +
+      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;text-align:right;color:#c8cccf">' + (l.est != null ? money(l.est) : '—') + '</span></div>'
     ).join('');
-    document.getElementById('preview').style.display = 'block';
-    document.getElementById('preview').innerHTML =
-      '<div class="pv-strip"><div class="l"><b>' + PH.esc(filename) + '</b> — ' + parsed.lines.length + ' parts parsed' + (estTotal ? ' · est. total ' + money(estTotal) : '') + '</div><div class="x" id="clearFile">&times;</div></div>' +
-      '<div class="pv-table"><div class="pv-head"><div>DESCRIPTION</div><div>PART NUMBER</div><div>QTY</div><div>ESTIMATE</div></div><div class="pv-scroll">' + rowsHtml + '</div></div>' +
-      '<button class="btn" id="huntBtn" style="width:100%;justify-content:center;margin-top:16px">Hunt all ' + parsed.lines.length + ' parts &#8594;</button>';
-    document.getElementById('clearFile').addEventListener('click', resetUpload);
-    document.getElementById('huntBtn').addEventListener('click', hunt);
+    $('preview').style.display = 'block';
+    $('preview').innerHTML =
+      '<div style="display:flex;align-items:center;gap:12px;padding:13px 15px;background:rgba(88,201,138,.08);border:1px solid rgba(88,201,138,.25);border-radius:10px;margin-bottom:18px">' +
+        '<span style="width:34px;height:34px;border-radius:8px;background:rgba(88,201,138,.15);color:#58c98a;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">✓</span>' +
+        '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">' + PH.esc(filename) + '</div>' +
+        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8b9096">' + parsed.lines.length + ' parts parsed · est. total ' + money(estTotal) + '</div></div>' +
+        '<div id="clearFile" style="color:#8b9096;cursor:pointer;font-size:18px">×</div></div>' +
+      '<div style="border:1px solid #23272c;border-radius:11px;overflow:hidden;margin-bottom:20px">' +
+        '<div style="display:grid;grid-template-columns:1fr 130px 46px 92px;gap:10px;padding:10px 14px;background:#0f1113;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076"><span>DESCRIPTION</span><span>PART NUMBER</span><span>QTY</span><span style="text-align:right">ESTIMATE</span></div>' +
+        '<div style="max-height:360px;overflow:auto">' + rows + '</div></div>' +
+      '<div id="huntBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;padding:14px;border-radius:10px;background:#ff5a2c;color:#0d0e10;font-weight:700;font-size:15px;cursor:pointer">Hunt all ' + parsed.lines.length + ' parts &#8594;</div>';
+    $('clearFile').addEventListener('click', () => { parsed = { name: '', lines: [] }; fileInput.value = ''; $('preview').style.display = 'none'; $('preview').innerHTML = ''; $('dropZone').style.display = 'flex'; });
+    $('huntBtn').addEventListener('click', hunt);
   }
-
-  function resetUpload() {
-    parsed = { name: '', lines: [] };
-    fileInput.value = '';
-    document.getElementById('preview').style.display = 'none';
-    document.getElementById('preview').innerHTML = '';
-    document.getElementById('dropWrap').style.display = 'block';
-  }
-
   async function hunt() {
-    const btn = document.getElementById('huntBtn');
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating hunt…';
+    const btn = $('huntBtn'); btn.style.pointerEvents = 'none'; btn.innerHTML = '<span class="spinner"></span> Creating hunt…';
     try {
       const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: 'AUD', lines: parsed.lines } });
       location.href = 'list.html?id=' + encodeURIComponent(project.id) + '&run=1';
-    } catch (e) {
-      document.getElementById('listMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>';
-      btn.disabled = false; btn.innerHTML = 'Hunt all ' + parsed.lines.length + ' parts &#8594;';
-    }
+    } catch (e) { $('listMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; btn.style.pointerEvents = 'auto'; btn.textContent = 'Hunt all ' + parsed.lines.length + ' parts →'; }
   }
 
   /* ---------- dashboard ---------- */
   const isToday = (iso) => iso && (Date.now() - new Date(iso).getTime()) < 86400000;
-
   async function load() {
     try {
       const { projects } = await PH.api('/api/projects');
-      const matches = projects.reduce((n, p) => n + (p.listing_count || 0), 0);
-      const runs = projects.reduce((n, p) => n + (p.run_count || 0), 0);
-      const today = projects.filter((p) => isToday(p.last_run_at)).length;
-      document.getElementById('sActive').textContent = projects.length;
-      document.getElementById('sMatches').textContent = matches;
-      document.getElementById('sToday').textContent = today;
-      document.getElementById('sRuns').textContent = runs;
-
+      $('sActive').textContent = projects.length;
+      $('sMatches').textContent = projects.reduce((n, p) => n + (p.listing_count || 0), 0);
+      $('sToday').textContent = projects.filter((p) => isToday(p.last_run_at)).length;
+      $('sRuns').textContent = projects.reduce((n, p) => n + (p.run_count || 0), 0);
       grid.innerHTML = '';
       projects.forEach((p) => {
-        const cfg = p.config || {};
-        const isList = cfg.kind === 'list';
-        const active = isToday(p.last_run_at);
-        const a = document.createElement('a');
-        a.className = 'pcard';
+        const cfg = p.config || {}, isList = cfg.kind === 'list', active = isToday(p.last_run_at);
+        const a = document.createElement('a'); a.className = 'pcard';
         a.href = (isList ? 'list.html?id=' : 'project.html?id=') + encodeURIComponent(p.id);
         if (isList) {
-          const nLines = (cfg.partsList || []).length;
-          const saved = cfg.totals ? money(cfg.totals.saveTotal) : null;
-          a.innerHTML =
-            '<div class="pcard-top"><div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>PARTS LIST</div>' +
-              '<span class="pcard-when">' + PH.ago(p.last_run_at) + '</span></div>' +
-            '<h3>' + PH.esc(p.name) + '</h3>' +
-            '<p class="goal">' + nLines + ' line items from an uploaded estimate.</p>' +
-            '<div class="tags"><span class="tag">ESTIMATE</span></div>' +
-            '<div class="pcard-foot"><div><span class="n">' + nLines + '</span><span class="lbl">lines</span></div>' +
-            (saved ? '<span class="new">save ' + saved + '</span>' : '') + '</div>';
+          const n = (cfg.partsList || []).length, saved = cfg.totals ? money(cfg.totals.saveTotal) : null;
+          a.innerHTML = '<div class="pcard-top"><div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>PARTS LIST</div><span class="pcard-when">' + PH.ago(p.last_run_at) + '</span></div>' +
+            '<h3>' + PH.esc(p.name) + '</h3><p class="goal">' + n + ' line items from an uploaded estimate.</p><div class="tags"><span class="tag">ESTIMATE</span></div>' +
+            '<div class="pcard-foot"><div><span class="n">' + n + '</span><span class="lbl">lines</span></div>' + (saved ? '<span class="new">save ' + saved + '</span>' : '') + '</div>';
         } else {
           const cats = (cfg.categories || []).slice(0, 3);
-          a.innerHTML =
-            '<div class="pcard-top"><div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>' + (active ? 'ACTIVE' : 'IDLE') + '</div>' +
-              '<span class="pcard-when">' + PH.ago(p.last_run_at) + '</span></div>' +
-            '<h3>' + PH.esc(p.name) + '</h3>' +
-            '<p class="goal">' + PH.esc(p.goal || '') + '</p>' +
-            '<div class="tags">' + cats.map((c) => '<span class="tag">' + PH.esc(c) + '</span>').join('') + '</div>' +
-            '<div class="pcard-foot"><div><span class="n">' + (p.listing_count || 0) + '</span><span class="lbl">matches</span></div>' +
-            (active ? '<span class="new">RECENT</span>' : '') + '</div>';
+          a.innerHTML = '<div class="pcard-top"><div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>' + (active ? 'ACTIVE' : 'IDLE') + '</div><span class="pcard-when">' + PH.ago(p.last_run_at) + '</span></div>' +
+            '<h3>' + PH.esc(p.name) + '</h3><p class="goal">' + PH.esc(p.goal || '') + '</p><div class="tags">' + cats.map((c) => '<span class="tag">' + PH.esc(c) + '</span>').join('') + '</div>' +
+            '<div class="pcard-foot"><div><span class="n">' + (p.listing_count || 0) + '</span><span class="lbl">matches</span></div>' + (active ? '<span class="new">RECENT</span>' : '') + '</div>';
         }
         grid.appendChild(a);
       });
-      const nc = document.createElement('div');
-      nc.className = 'newcard';
+      const nc = document.createElement('div'); nc.className = 'newcard';
       nc.innerHTML = '<div class="circ">＋</div><div>Start a new hunt</div>';
-      nc.addEventListener('click', () => showNew(true));
-      grid.appendChild(nc);
-    } catch (e) {
-      grid.innerHTML = '<div class="banner err">Could not load projects: ' + PH.esc(e.message) + '</div>';
-    }
+      nc.addEventListener('click', () => showNew(true)); grid.appendChild(nc);
+    } catch (e) { grid.innerHTML = '<div class="banner err">Could not load projects: ' + PH.esc(e.message) + '</div>'; }
   }
-
   load();
 });
 </script>

@@ -7,9 +7,9 @@
 <link rel="icon" href="/assets/mark.png?v=6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css?v=7">
-<script src="/assets/app.js?v=7" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=8">
+<script src="/assets/app.js?v=8" defer></script>
 </head>
 <body>
 <header class="ps-header">
@@ -28,55 +28,67 @@
 </header>
 
 <main class="ps-main">
-  <div class="eyebrow">// SAVED PARTS</div>
-  <h1 class="page">Watchlist</h1>
-  <p class="lede">Parts you've starred from any hunt. Open a hunt's results and tap the ☆ on any listing to keep it here.</p>
-
-  <div id="wrap" style="margin-top:28px"></div>
+  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:#ff6a3d;margin-bottom:10px">// SAVED PARTS</div>
+  <h1 style="font-family:Archivo,sans-serif;font-weight:800;font-size:40px;margin:0 0 8px;letter-spacing:-.02em">Watchlist</h1>
+  <p style="color:#9aa0a6;font-size:15px;max-width:560px;margin:0 0 28px;line-height:1.55">Parts you've starred from any hunt. Sniper keeps tracking their price and availability and pings Alerts when something changes.</p>
+  <div id="wrap"></div>
 </main>
 
-<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
+<footer style="border-top:1px solid #1a1d20;padding:22px 24px;text-align:center">
+  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4e5359;letter-spacing:.1em">PARTS SNIPER — PRECISION PART HUNTING</span>
+</footer>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  const imgUrl = function (u) { if (!u) return ''; u = String(u).trim(); return u.slice(0,2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
   PH.updateWatchCount();
   const wrap = document.getElementById('wrap');
+  const imgUrl = (u) => { if (!u) return ''; u = String(u).trim(); return u.slice(0,2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
+  const scoreStyle = (sc) => "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" +
+    (sc >= 88 ? '#58c98a' : sc >= 70 ? '#e0a53c' : '#8b9096') + ";background:" + (sc >= 88 ? 'rgba(88,201,138,.14)' : sc >= 70 ? 'rgba(224,165,60,.14)' : 'rgba(139,144,150,.12)') + ";";
+  function scoreOf(l) { let s = 78; if (l.price != null && PH.parsePrice(l.price) != null) s += 4; if (l.image) s += 3; return Math.max(5, Math.min(99, s)); }
+
+  function thumb(l) {
+    const isrc = imgUrl(l.image);
+    return isrc
+      ? '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;overflow:hidden;border:1px solid #24282d"><img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.innerHTML=\'\'" style="width:100%;height:100%;object-fit:cover"></div>'
+      : '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
+  }
+  function itemHtml(l) {
+    const meta = [l.seller, l.section].filter(Boolean).map((x) => PH.esc(x)).join(' &nbsp;·&nbsp; ');
+    return '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px;background:#131518;border:1px solid #23272c;border-radius:14px" data-url="' + PH.esc(l.url) + '">' +
+      thumb(l) +
+      '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">' +
+        '<div style="' + scoreStyle(scoreOf(l)) + '">' + scoreOf(l) + '</div>' +
+        '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15.5px;margin:0;line-height:1.3">' + PH.esc(l.title) + '</h3></div>' +
+        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + (meta || '&nbsp;') + '</div></div>' +
+      '<div style="display:flex;align-items:center;gap:16px;flex-shrink:0">' +
+        '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap"><a href="' + PH.esc(l.url) + '" target="_blank" rel="noopener" style="color:#e9ebed">' + PH.esc(PH.fmtPrice(l.price)) + '</a></div>' +
+        '<div class="jrm" title="Remove from watchlist" style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d">★</div>' +
+      '</div></div>';
+  }
 
   function render() {
     const items = PH.watch.list();
     if (!items.length) {
-      wrap.innerHTML =
-        '<div class="empty"><div class="ic">☆</div>' +
-        '<h3>No saved parts yet</h3>' +
-        '<p>Open a hunt\'s results and tap the ☆ on any listing to track it here.</p>' +
-        '<a class="btn" href="/index.html">Go to projects</a></div>';
+      wrap.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:70px 20px;border:1.5px dashed #2f343a;border-radius:16px;color:#6b7076">' +
+        '<div style="font-size:34px">☆</div><div style="font-size:15px;font-weight:600;color:#9aa0a6">No saved parts yet</div>' +
+        '<div style="font-size:13.5px;text-align:center;max-width:340px;line-height:1.5">Open a hunt\'s results and tap the ☆ on any listing to track it here.</div>' +
+        '<div onclick="location.href=\'/index.html\'" style="margin-top:4px;padding:11px 18px;border-radius:9px;background:#ff5a2c;color:#0d0e10;font-weight:700;font-size:14px;cursor:pointer">Go to projects</div></div>';
       return;
     }
-    let html = '<div class="grid">';
-    items.forEach((l) => {
-      const isrc = imgUrl(l.image);
-      const img = isrc ? '<img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">NO IMAGE</span>';
-      html += '<div class="card" data-url="' + PH.esc(l.url) + '">' +
-        '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img +
-          '<div class="vote"><button class="save on" title="Remove from watchlist">★</button></div></div>' +
-        '<div class="body">' +
-          '<div class="ptitle">' + PH.esc(l.title) + '</div>' +
-          (l.projectName ? '<div class="desc">from ' + PH.esc(l.projectName) + '</div>' : '') +
-          '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
-          '<div class="foot-actions"><a class="view" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View &#8599;</a></div></div>' +
-        '</div></div>';
-    });
-    html += '</div>';
-    wrap.innerHTML = html;
-    wrap.querySelectorAll('.card').forEach((card) => {
-      card.querySelector('.save').addEventListener('click', () => {
-        PH.watch.remove(card.dataset.url);
-        PH.updateWatchCount();
-        PH.toast('Removed from watchlist');
-        render();
-      });
-    });
+    const groups = {};
+    items.forEach((l) => { const k = l.projectName || 'Ungrouped'; (groups[k] = groups[k] || []).push(l); });
+    wrap.innerHTML = '<div style="display:flex;flex-direction:column;gap:30px">' + Object.keys(groups).map((k) => {
+      const g = groups[k];
+      return '<div><div style="display:flex;align-items:center;gap:11px;margin-bottom:13px;padding-bottom:11px;border-bottom:1px solid #22262b">' +
+        '<span style="width:8px;height:8px;border-radius:50%;background:#ff5a2c"></span>' +
+        '<h2 style="font-family:Archivo,sans-serif;font-weight:700;font-size:18px;margin:0;letter-spacing:-.01em">' + PH.esc(k) + '</h2>' +
+        '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#6b7076">' + g.length + (g.length === 1 ? ' part' : ' parts') + '</span></div>' +
+        '<div style="display:flex;flex-direction:column;gap:12px">' + g.map(itemHtml).join('') + '</div></div>';
+    }).join('') + '</div>';
+    wrap.querySelectorAll('[data-url]').forEach((row) => row.querySelector('.jrm').addEventListener('click', () => {
+      PH.watch.remove(row.dataset.url); PH.updateWatchCount(); PH.toast('Removed from watchlist'); render();
+    }));
   }
   render();
 });

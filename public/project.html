@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Parts Sniper — Project</title>
+<title>Parts Sniper — Results</title>
 <link rel="icon" href="/assets/mark.png?v=6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
 <script src="/assets/app.js?v=8" defer></script>
 </head>
@@ -28,313 +28,179 @@
 </header>
 
 <main class="ps-main">
-  <div class="crumb"><a href="/index.html">&#8592; All projects</a></div>
+  <div onclick="location.href='/index.html'" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#9aa0a6;cursor:pointer;margin-bottom:20px">&#8592; All projects</div>
 
-  <div class="row-between" style="margin-top:16px">
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:8px">
     <div>
-      <h1 class="page" id="pName">Loading…</h1>
-      <p class="lede" id="pGoal"></p>
-      <div class="learn" id="learn" style="display:none"><span class="pip"></span><span id="learnTxt"></span></div>
+      <div id="kicker" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#ff6a3d;margin-bottom:10px">// 0 MATCHES</div>
+      <h1 id="pName" style="font-family:Archivo,sans-serif;font-weight:800;font-size:34px;margin:0;letter-spacing:-.02em">Loading…</h1>
     </div>
-  </div>
-
-  <div class="toolbar">
-    <button class="btn" id="runBtn">Re-run search now</button>
-    <button class="btn ghost" id="refineToggle" aria-expanded="false">&#9998; Edit search</button>
-    <span id="runMsg" class="muted"></span>
-  </div>
-
-  <!-- Refine panel -->
-  <div class="panel" id="cfg" hidden style="margin-top:18px">
-    <div class="field">
-      <label>Sources</label>
-      <div class="checks">
-        <label class="check"><input type="checkbox" id="fOem"> OEM parts</label>
-        <label class="check"><input type="checkbox" id="fAft"> Aftermarket parts</label>
-        <label class="check"><input type="checkbox" id="fSalv"> Salvage vehicles</label>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div id="editBtn" style="display:flex;align-items:center;gap:7px;padding:10px 16px;border-radius:10px;border:1px solid #2a2e34;color:#e9ebed;font-weight:600;font-size:13.5px;cursor:pointer">&#9998; Edit search</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 15px;background:#131518;border:1px solid #23272c;border-radius:10px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#58c98a;animation:ps-pulse 2s ease infinite"></span>
+        <span id="learnPill" style="font-size:13px;color:#c8cccf">Learning</span>
       </div>
     </div>
-    <div class="field">
-      <label for="fCountry">Country</label>
-      <select id="fCountry">
-        <option value="all">All countries</option>
-        <option value="au">Australia</option>
-        <option value="us">United States</option>
-        <option value="gb">United Kingdom</option>
-        <option value="ca">Canada</option>
-        <option value="nz">New Zealand</option>
-        <option value="de">Germany</option>
-        <option value="fr">France</option>
-        <option value="it">Italy</option>
-        <option value="es">Spain</option>
-        <option value="nl">Netherlands</option>
-        <option value="jp">Japan</option>
-        <option value="ae">United Arab Emirates</option>
-      </select>
-    </div>
-    <div class="field">
-      <label for="cCats">Categories</label>
-      <div class="hint">Section headings your results are grouped under (one per line). Every result is placed under one of these — nothing else is invented.</div>
-      <textarea id="cCats"></textarea>
-    </div>
-    <div class="field">
-      <label for="cQueries">Search queries</label>
-      <div class="hint">The exact phrases searched on the web — this is what finds listings (one per line).</div>
-      <textarea id="cQueries"></textarea>
-    </div>
-    <div class="field">
-      <label for="cRules">Matching rules</label>
-      <div class="hint">The rules the sniper must obey when deciding what to keep (one per line).</div>
-      <textarea id="cRules"></textarea>
-    </div>
-    <div class="hint" style="margin-bottom:14px">Queries find &#8594; rules filter &#8594; categories sort. These plus your feedback are sent on every run.</div>
-    <div class="form-actions">
-      <button class="btn grey" id="saveCfg">Save changes</button>
-      <span class="muted" style="align-self:center;font-size:13px">Also saved automatically when you re-run.</span>
-    </div>
+  </div>
+  <div id="pGoal" class="muted" style="font-size:13.5px;max-width:640px;margin:2px 0 0"></div>
+
+  <div id="catRow" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;margin:22px 0 14px">
+    <span style="font-size:12.5px;color:#6b7076;margin-right:2px">Category</span><span id="catChips"></span>
+  </div>
+  <div id="sortRow" style="display:none;align-items:center;flex-wrap:wrap;gap:10px;margin:0 0 22px">
+    <span style="font-size:12.5px;color:#6b7076">Sort</span><span id="sortChips"></span>
+    <div style="flex:1"></div>
+    <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#6b7076">Rate results to sharpen the next run &#8594;</span>
   </div>
 
-  <!-- Category / Sort controls -->
-  <div class="controls" id="controls" style="display:none">
-    <div class="ctrl"><span>Category</span>
-      <select id="catFilter"><option value="__all">All categories</option></select>
-    </div>
-    <div class="ctrl"><span>Sort</span>
-      <select id="sortBy">
-        <option value="rel">Relevance</option>
-        <option value="new">Newest</option>
-        <option value="plow">Price: low to high</option>
-        <option value="phigh">Price: high to low</option>
-      </select>
-    </div>
-    <div class="ctrl push"><span id="countTxt"></span></div>
-  </div>
-
-  <div id="results"></div>
+  <div id="results" style="display:flex;flex-direction:column;gap:12px"></div>
 </main>
 
-<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
+<footer style="border-top:1px solid #1a1d20;padding:22px 24px;text-align:center">
+  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4e5359;letter-spacing:.1em">PARTS SNIPER — PRECISION PART HUNTING</span>
+</footer>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  const imgUrl = function (u) { if (!u) return ''; u = String(u).trim(); return u.slice(0,2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
+  const imgUrl = (u) => { if (!u) return ''; u = String(u).trim(); return u.slice(0,2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
   const id = PH.qs('id');
   if (!id) { document.getElementById('pName').textContent = 'Missing project id'; return; }
   PH.updateWatchCount();
-
-  const refineBtn = document.getElementById('refineToggle');
-  const cfgPanel = document.getElementById('cfg');
-  refineBtn.addEventListener('click', () => {
-    const opening = cfgPanel.hasAttribute('hidden');
-    if (opening) { cfgPanel.removeAttribute('hidden'); refineBtn.textContent = 'Hide search'; refineBtn.setAttribute('aria-expanded', 'true'); }
-    else { cfgPanel.setAttribute('hidden', ''); refineBtn.innerHTML = '&#9998; Edit search'; refineBtn.setAttribute('aria-expanded', 'false'); }
-  });
-  document.querySelectorAll('.check input').forEach((cb) => {
-    const sync = () => cb.closest('.check').classList.toggle('on', cb.checked);
-    cb.addEventListener('change', sync);
-  });
-
-  let state = { project: null, listings: [], feedback: {} };
+  const $ = (i) => document.getElementById(i);
+  let state = { project: null, listings: [], feedback: {}, category: 'All', sort: 'best' };
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
-  const linesToArr = (s) => s.split('\n').map((x) => x.trim()).filter(Boolean);
-  const readFilters = () => ({
-    oem: document.getElementById('fOem').checked,
-    aftermarket: document.getElementById('fAft').checked,
-    salvage: document.getElementById('fSalv').checked,
-    country: document.getElementById('fCountry').value
-  });
 
-  // Snap a listing into one of the project's defined categories. Never invents a section.
+  $('editBtn').addEventListener('click', () => { location.href = 'draft.html?id=' + encodeURIComponent(id); });
+
+  const scoreStyle = (sc) => "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" +
+    (sc >= 88 ? '#58c98a' : sc >= 70 ? '#e0a53c' : '#8b9096') + ";background:" + (sc >= 88 ? 'rgba(88,201,138,.14)' : sc >= 70 ? 'rgba(224,165,60,.14)' : 'rgba(139,144,150,.12)') + ";";
+  const voteStyle = (on, kind) => {
+    const base = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .12s;";
+    if (on && kind === 'up') return base + "background:rgba(88,201,138,.16);border:1px solid #58c98a;color:#58c98a;";
+    if (on && kind === 'down') return base + "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;";
+    return base + "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;";
+  };
+  const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" +
+    (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
+  const catChipStyle = (on) => "display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;" +
+    (on ? "background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;" : "background:transparent;border:1px solid #23272c;color:#8b9096;");
+  const sortChipStyle = (on) => "display:inline-flex;padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;" +
+    (on ? "background:#1f2327;border:1px solid #3a4046;color:#e9ebed;" : "background:transparent;border:1px solid #23272c;color:#8b9096;");
+
+  function baseScore(l) {
+    let s = 72; const b = (l.badges || []).join(' ').toLowerCase();
+    if (/oem|genuine/.test(b)) s += 10;
+    if (/verified|in stock|available/.test(b)) s += 5;
+    if (l.price_num != null) s += 4;
+    if (l.image) s += 3;
+    if (l.source === 'salvage') s += 2;
+    return s;
+  }
+  function scoreOf(l) { let s = baseScore(l); const v = state.feedback[l.url] || 0; if (v > 0) s += 3; if (v < 0) s -= 4; return Math.max(5, Math.min(99, s)); }
+
   function snapCategory(l, cats) {
     const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const sec = norm(l.section);
-    for (const c of cats) if (norm(c) === sec) return c;                 // exact match
+    for (const c of cats) if (norm(c) === sec) return c;
     const stop = new Set(['and', 'the', 'for', 'with', 'parts', 'part', 'oem', 'system']);
     const words = (s) => norm(s).split(' ').filter((w) => w.length > 2 && !stop.has(w));
     const hay = words((l.section || '') + ' ' + (l.title || ''));
-    let best = cats[0], bestScore = -1;
-    for (const c of cats) {
-      let score = 0;
-      for (const cw of words(c)) if (hay.some((h) => h === cw || (cw.length > 3 && (h.includes(cw) || cw.includes(h))))) score++;
-      if (score > bestScore) { bestScore = score; best = c; }
-    }
+    let best = cats[0], bs = -1;
+    for (const c of cats) { let sc = 0; for (const cw of words(c)) if (hay.some((h) => h === cw || (cw.length > 3 && (h.includes(cw) || cw.includes(h))))) sc++; if (sc > bs) { bs = sc; best = c; } }
     return best;
   }
 
   async function load() {
     try {
       const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
-      state.project = data.project;
-      state.listings = data.listings || [];
-      state.feedback = fbMap(data.feedback);
-      hydrateConfig();
-      render();
-    } catch (e) {
-      document.getElementById('results').innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>';
-    }
+      state.project = data.project; state.listings = data.listings || []; state.feedback = fbMap(data.feedback);
+      $('pName').textContent = state.project.name; $('pGoal').textContent = state.project.goal;
+      learn(); render();
+    } catch (e) { $('results').innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>'; }
   }
-
-  function hydrateConfig() {
-    const p = state.project, cfg = p.config || {};
-    document.getElementById('pName').textContent = p.name;
-    document.getElementById('pGoal').textContent = p.goal;
-    document.getElementById('cCats').value = (cfg.categories || []).join('\n');
-    document.getElementById('cQueries').value = (cfg.queries || []).join('\n');
-    document.getElementById('cRules').value = (cfg.rules || []).join('\n');
-    const flt = cfg.filters || {};
-    document.getElementById('fOem').checked = !!flt.oem;
-    document.getElementById('fAft').checked = !!flt.aftermarket;
-    document.getElementById('fSalv').checked = !!flt.salvage;
-    document.getElementById('fCountry').value = flt.country || 'all';
-    document.querySelectorAll('.check input').forEach((cb) => cb.closest('.check').classList.toggle('on', cb.checked));
-
-    // learning banner
-    const nfb = Object.keys(state.feedback).length;
-    const learn = document.getElementById('learn'), lt = document.getElementById('learnTxt');
-    learn.style.display = 'inline-flex';
-    lt.innerHTML = nfb ? ('Learning — <b>' + nfb + '</b> signal' + (nfb === 1 ? '' : 's') + ' from your feedback')
-                       : 'Rate results with 👍 / 👎 to sharpen the next run &#8594;';
-
-    // category filter — ONLY the project's defined categories (no invented ones)
-    const cats = (cfg.categories || []).filter(Boolean);
-    const sel = document.getElementById('catFilter');
-    sel.innerHTML = '<option value="__all">All categories</option>' + cats.map((c) => '<option value="' + PH.esc(c) + '">' + PH.esc(c) + '</option>').join('');
-  }
-
-  function sortItems(items) {
-    const by = document.getElementById('sortBy').value;
-    const arr = items.slice();
-    const pn = (l) => (l.price_num == null ? null : Number(l.price_num));
-    if (by === 'new') arr.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
-    else if (by === 'plow') arr.sort((a, b) => (pn(a) == null) - (pn(b) == null) || (pn(a) - pn(b)));
-    else if (by === 'phigh') arr.sort((a, b) => (pn(a) == null) - (pn(b) == null) || (pn(b) - pn(a)));
-    return arr;
+  function learn() {
+    const n = Object.keys(state.feedback).length;
+    $('learnPill').innerHTML = 'Learning — <span style="color:#58c98a;font-weight:600">' + n + ' signal' + (n === 1 ? '' : 's') + '</span> from your feedback';
   }
 
   function render() {
-    const cfg = state.project.config || {};
-    const out = document.getElementById('results');
-    const controls = document.getElementById('controls');
+    const c = state.project.config || {};
+    $('kicker').textContent = '// ' + state.listings.length + ' MATCHES';
+    const out = $('results');
     if (!state.listings.length) {
-      controls.style.display = 'none';
-      out.innerHTML = '<div class="banner">No listings yet. Hit <b>Re-run search now</b> to fetch some.</div>';
+      $('catRow').style.display = 'none'; $('sortRow').style.display = 'none';
+      out.innerHTML = '<div class="banner">No listings yet. Hit <b>Edit search</b> → <b>Update &amp; re-run</b>.</div>';
       return;
     }
-    controls.style.display = 'flex';
-    document.getElementById('countTxt').textContent = state.listings.length + ' matches';
-
-    // Group STRICTLY into the project's defined Categories. Every listing is snapped
-    // into one of them — no display section is ever invented from a listing's raw
-    // section. (Only if a project genuinely has no categories do we fall back to
-    // whatever sections exist.)
-    const defined = (cfg.categories || []).filter(Boolean);
+    $('catRow').style.display = 'flex'; $('sortRow').style.display = 'flex';
+    const defined = (c.categories || []).filter(Boolean);
     const useDefined = defined.length > 0;
     const cats = useDefined ? defined.slice() : [...new Set(state.listings.map((l) => l.section || 'Results'))];
-    const bySec = {}; cats.forEach((c) => (bySec[c] = []));
-    state.listings.forEach((l) => {
-      const c = useDefined ? snapCategory(l, cats) : (l.section || 'Results');
-      (bySec[c] = bySec[c] || []).push(l);
-    });
+    state.listings.forEach((l) => { l._cat = useDefined ? snapCategory(l, cats) : (l.section || 'Results'); });
 
-    const catFilter = document.getElementById('catFilter').value;
-    const show = catFilter === '__all' ? cats : cats.filter((c) => c === catFilter);
+    const counts = {}; state.listings.forEach((l) => { counts[l._cat] = (counts[l._cat] || 0) + 1; });
+    $('catChips').innerHTML = ['All', ...cats].map((cat) => {
+      const n = cat === 'All' ? state.listings.length : (counts[cat] || 0);
+      return '<span class="jchip" data-cat="' + PH.esc(cat) + '" style="' + catChipStyle(state.category === cat) + '">' + PH.esc(cat) + ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;opacity:.7">' + n + '</span></span>';
+    }).join(' ');
+    $('catChips').querySelectorAll('.jchip').forEach((el) => el.addEventListener('click', () => { state.category = el.dataset.cat; render(); }));
 
-    let html = '';
-    show.forEach((sec) => {
-      const items = sortItems(bySec[sec] || []); if (!items.length) return;
-      html += '<div class="section-title">' + PH.esc(sec) + ' <span class="tag">' + items.length + '</span></div><div class="grid">';
-      items.forEach((l) => { html += cardHtml(l); });
-      html += '</div>';
-    });
-    out.innerHTML = html || '<div class="banner">Nothing in this category.</div>';
-    wireCards();
+    const sorts = [['best', 'Best match'], ['new', 'Newest'], ['price', 'Lowest price']];
+    $('sortChips').innerHTML = sorts.map((s) => '<span class="schip" data-s="' + s[0] + '" style="' + sortChipStyle(state.sort === s[0]) + '">' + s[1] + '</span>').join(' ');
+    $('sortChips').querySelectorAll('.schip').forEach((el) => el.addEventListener('click', () => { state.sort = el.dataset.s; render(); }));
+
+    let shown = state.listings.filter((l) => state.category === 'All' || l._cat === state.category);
+    const pn = (l) => (l.price_num == null ? Infinity : Number(l.price_num));
+    if (state.sort === 'best') shown = shown.slice().sort((a, b) => scoreOf(b) - scoreOf(a));
+    else if (state.sort === 'new') shown = shown.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    else if (state.sort === 'price') shown = shown.slice().sort((a, b) => pn(a) - pn(b));
+
+    out.innerHTML = shown.map(rowHtml).join('') || '<div class="banner">Nothing in this category.</div>';
+    wire();
   }
 
-  function cardHtml(l) {
-    const v = state.feedback[l.url] || 0;
-    const saved = PH.watch.has(l.url);
-    const badges = (l.badges || []).map((b) => '<span class="badge">' + PH.esc(b) + '</span>').join('');
+  function rowHtml(l) {
+    const v = state.feedback[l.url] || 0, sc = scoreOf(l), saved = PH.watch.has(l.url);
+    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px;background:#131518;border:1px solid " +
+      (v === 1 ? 'rgba(88,201,138,.4)' : v === -1 ? '#2a2e34' : '#23272c') + ";border-radius:14px;transition:border-color .15s;" + (v === -1 ? 'opacity:.55;' : '');
     const isrc = imgUrl(l.image);
-    const img = isrc ? '<img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">NO IMAGE</span>';
-    const source = (l.source || 'unknown');
-    return '<div class="card" data-url="' + PH.esc(l.url) + '">' +
-      '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img +
-        '<span class="source-badge ' + PH.esc(source) + '">' + PH.esc(source.toUpperCase()) + '</span>' +
-        '<div class="vote">' +
-          '<button class="save' + (saved ? ' on' : '') + '" title="Save to watchlist">' + (saved ? '★' : '☆') + '</button>' +
-          '<button class="up' + (v > 0 ? ' active' : '') + '" title="Good match">👍</button>' +
-          '<button class="down' + (v < 0 ? ' active' : '') + '" title="Poor match">👎</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="body">' +
-        '<div class="ptitle">' + PH.esc(l.title) + '</div>' +
-        (l.description ? '<div class="desc">' + PH.esc(l.description) + '</div>' : '') +
-        (badges ? '<div class="badges">' + badges + '</div>' : '') +
-        '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
-        '<div class="foot-actions"><a class="view" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View &#8599;</a></div></div>' +
-      '</div></div>';
+    const thumb = isrc
+      ? '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;overflow:hidden;border:1px solid #24282d"><img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.innerHTML=\'\'" style="width:100%;height:100%;object-fit:cover"></div>'
+      : '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
+    const pnBadge = (l.badges || []).find((b) => /^(pn|lot)\b/i.test(b) || /\d{3}/.test(b));
+    const meta = [l.seller, l.condition, pnBadge].filter(Boolean).map((x) => PH.esc(x)).join(' &nbsp;·&nbsp; ');
+    return '<div style="' + rowStyle + '" data-url="' + PH.esc(l.url) + '">' + thumb +
+      '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">' +
+        '<div style="' + scoreStyle(sc) + '">' + sc + '</div><h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15.5px;margin:0;line-height:1.3">' + PH.esc(l.title) + '</h3></div>' +
+        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + (meta || '&nbsp;') + '</div></div>' +
+      '<div style="display:flex;align-items:center;gap:16px;flex-shrink:0">' +
+        '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap"><a href="' + PH.esc(l.url) + '" target="_blank" rel="noopener" style="color:#e9ebed">' + PH.esc(PH.fmtPrice(l.price)) + '</a></div>' +
+        '<div style="display:flex;gap:7px">' +
+          '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div>' +
+          '<div class="jup" title="More like this" style="' + voteStyle(v === 1, 'up') + '">▲</div>' +
+          '<div class="jdown" title="Less like this" style="' + voteStyle(v === -1, 'down') + '">▼</div>' +
+        '</div></div></div>';
   }
 
-  function wireCards() {
-    document.querySelectorAll('.card').forEach((card) => {
-      const url = card.dataset.url;
-      const l = state.listings.find((x) => x.url === url);
-      card.querySelector('.up').addEventListener('click', () => vote(l, state.feedback[url] > 0 ? 0 : 1));
-      card.querySelector('.down').addEventListener('click', () => vote(l, state.feedback[url] < 0 ? 0 : -1));
-      card.querySelector('.save').addEventListener('click', (e) => {
+  function wire() {
+    $('results').querySelectorAll('[data-url]').forEach((row) => {
+      const url = row.dataset.url, l = state.listings.find((x) => x.url === url);
+      row.querySelector('.jup').addEventListener('click', () => vote(l, (state.feedback[url] > 0) ? 0 : 1));
+      row.querySelector('.jdown').addEventListener('click', () => vote(l, (state.feedback[url] < 0) ? 0 : -1));
+      row.querySelector('.jsave').addEventListener('click', () => {
         PH.watch.toggle({ url: l.url, title: l.title, price: l.price, seller: l.seller, image: l.image, section: l.section, projectId: id, projectName: state.project.name });
-        const on = PH.watch.has(url);
-        e.target.classList.toggle('on', on); e.target.textContent = on ? '★' : '☆';
-        PH.updateWatchCount();
-        PH.toast(on ? 'Saved to watchlist' : 'Removed from watchlist');
+        PH.updateWatchCount(); render(); PH.toast(PH.watch.has(url) ? 'Saved to watchlist' : 'Removed from watchlist');
       });
     });
   }
-
   async function vote(l, value) {
     try {
       await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: l.url, title: l.title, seller: l.seller, vote: value } });
       if (value === 0) delete state.feedback[l.url]; else state.feedback[l.url] = value;
-      hydrateConfig(); render();
-      PH.toast(value === 0 ? 'Feedback cleared' : (value > 0 ? 'Marked good' : 'Marked poor'));
+      learn(); render();
     } catch (e) { PH.toast('Vote failed: ' + e.message); }
   }
-
-  function currentConfig() {
-    return {
-      categories: linesToArr(document.getElementById('cCats').value),
-      queries: linesToArr(document.getElementById('cQueries').value),
-      rules: linesToArr(document.getElementById('cRules').value),
-      filters: readFilters()
-    };
-  }
-
-  document.getElementById('catFilter').addEventListener('change', render);
-  document.getElementById('sortBy').addEventListener('change', render);
-
-  document.getElementById('saveCfg').addEventListener('click', async () => {
-    try {
-      const { project } = await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config: currentConfig() } });
-      state.project = project; hydrateConfig(); render(); PH.toast('Search saved');
-    } catch (e) { PH.toast('Save failed: ' + e.message); }
-  });
-
-  document.getElementById('runBtn').addEventListener('click', async () => {
-    const btn = document.getElementById('runBtn');
-    const msg = document.getElementById('runMsg');
-    btn.disabled = true;
-    msg.innerHTML = '<span class="spinner"></span> Sniping the web with AI… this can take a couple of minutes.';
-    try {
-      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config: currentConfig() } });
-      const r = await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
-      state.listings = r.listings || [];
-      hydrateConfig(); render();
-      msg.textContent = 'Done — ' + r.count + ' matches.';
-    } catch (e) {
-      msg.innerHTML = '<span style="color:#f0a1a1">' + PH.esc(e.message) + '</span>';
-    } finally { btn.disabled = false; }
-  });
-
   load();
 });
 </script>
