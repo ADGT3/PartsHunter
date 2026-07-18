@@ -2,10 +2,9 @@ import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 
 /* Parts-list hunt engine.
- * POST { projectId } -> for every line in the project's partsList, use Claude web_search
- * to find real online sources + prices (with their product URL), convert each to AUD via
- * live FX, pick the cheapest, compute per-line savings + totals, and store back into config.
- * One request; internally the lines run in parallel chunks with a hard time budget. */
+ * POST { projectId } -> for every line, use Claude web_search to find real online sources +
+ * prices (with product URL + kind: oem/aftermarket/salvage), respecting the project's selected
+ * Sources, convert each to AUD via live FX, pick the cheapest, compute savings + totals. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -34,14 +33,27 @@ async function fxToAud() {
   };
 }
 
-async function findChunk(parts) {
+// Normalise the model's "kind" to oem | aftermarket | salvage.
+function normKind(k) {
+  const s = String(k || '').toLowerCase();
+  if (/salvage|donor|wreck|used|second|pull/.test(s)) return 'salvage';
+  if (/after|repro|replica|copy|non-?genuine|pattern/.test(s)) return 'aftermarket';
+  if (/oem|genuine|original|dealer/.test(s)) return 'oem';
+  return 'oem';
+}
+
+async function findChunk(parts, wants) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return {};
+  const constraint = wants.length
+    ? 'ONLY include sources of these kinds: ' + wants.join(', ') + '. Ignore any other kind.'
+    : 'Include OEM/genuine, aftermarket and salvage/used sources.';
   const system = [
     'You find CURRENT online prices for specific car parts by part number.',
     'For each part you are given, use web_search to find real online sellers that list it for sale and read the price.',
     'Return ONLY a JSON object mapping the exact part number to an array of sources.',
-    'Each source: {"label": seller name, "location": country or region or "", "price": number, "currency": ISO code e.g. "USD", "url": the direct product/listing page URL on that seller}.',
+    'Each source: {"label": seller name, "location": country or region or "", "price": number, "currency": ISO code e.g. "USD", "url": the direct product/listing page URL, "kind": one of "oem" (genuine/dealer), "aftermarket", or "salvage" (used/donor)}.',
+    constraint,
     'Include ONLY real sellers you actually found with a listed price and a real product URL. Never invent sellers, prices or URLs. Price must be numeric (no symbols/commas). If nothing is found for a part, use an empty array.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
@@ -86,6 +98,9 @@ export default async function handler(req, res) {
     const parts = cfg.partsList || [];
     if (!parts.length) return res.status(400).json({ error: 'This project has no parts list.' });
 
+    const f = cfg.filters || {};
+    const wants = []; if (f.oem) wants.push('oem'); if (f.aftermarket) wants.push('aftermarket'); if (f.salvage) wants.push('salvage');
+
     const toAud = await fxToAud();
     const started = Date.now();
     const chunks = [];
@@ -96,27 +111,28 @@ export default async function handler(req, res) {
     async function worker() {
       while (idx < chunks.length && (Date.now() - started) < BUDGET_MS) {
         const c = chunks[idx++];
-        const r = await findChunk(c);
+        const r = await findChunk(c, wants);
         Object.assign(found, r);
       }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
 
     const results = parts.map((p) => {
-      const raw = (found[p.pn] || [])
-        .map((s) => ({ label: s && s.label || '', location: s && s.location || '', url: (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null, priceAud: toAud(Number(s && s.price), s && s.currency) }))
+      let raw = (found[p.pn] || [])
+        .map((s) => ({ label: s && s.label || '', location: s && s.location || '', url: (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null, kind: normKind(s && s.kind), priceAud: toAud(Number(s && s.price), s && s.currency) }))
         .filter((s) => s.priceAud != null && s.priceAud > 0);
+      if (wants.length) raw = raw.filter((s) => wants.includes(s.kind));
       raw.sort((a, b) => a.priceAud - b.priceAud);
 
       const est = (p.est == null || isNaN(Number(p.est))) ? null : Number(p.est);
-      let status = 'notfound', foundP = null, source = null, location = null, bestUrl = null, saving = 0;
+      let status = 'notfound', foundP = null, source = null, location = null, bestUrl = null, kind = null, saving = 0;
       if (raw.length) {
-        foundP = Math.round(raw[0].priceAud); source = raw[0].label; location = raw[0].location; bestUrl = raw[0].url;
+        foundP = Math.round(raw[0].priceAud); source = raw[0].label; location = raw[0].location; bestUrl = raw[0].url; kind = raw[0].kind;
         if (est != null && foundP < est) { status = 'saving'; saving = Math.round(est - foundP); }
         else status = 'nocheaper';
       }
-      const alts = raw.slice(0, 6).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url }));
-      return { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, matches: raw.length, status, saving, alts };
+      const alts = raw.slice(0, 6).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind }));
+      return { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
     });
 
     const estTotal = Math.round(results.reduce((n, r) => n + (r.est || 0), 0));

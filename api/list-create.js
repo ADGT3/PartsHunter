@@ -2,8 +2,8 @@ import { sql, ensureSchema, readBody, uid } from './_db.js';
 import { requireAuth } from './_auth.js';
 
 /* Create a "parts-list" project from an uploaded/parsed estimate.
- * POST { name, currency, lines: [{ desc, pn, qty, est }] }
- * Stores everything in the project's config jsonb (kind: 'list') — no schema change. */
+ * POST { name, currency, sources:{oem,aftermarket,salvage}, lines:[{desc,pn,qty,est}] }
+ * Stores everything in the project's config jsonb (kind: 'list'). */
 
 export default async function handler(req, res) {
   try {
@@ -14,6 +14,8 @@ export default async function handler(req, res) {
     const body = await readBody(req);
     const name = (body.name || 'Parts list').toString().slice(0, 200);
     const currency = (body.currency || 'AUD').toString().toUpperCase().slice(0, 6);
+    const s = body.sources || body.filters || {};
+    const filters = { oem: !!s.oem, aftermarket: !!s.aftermarket, salvage: !!s.salvage };
     const lines = Array.isArray(body.lines) ? body.lines : [];
     if (!lines.length) return res.status(400).json({ error: 'No parts lines provided.' });
 
@@ -27,11 +29,9 @@ export default async function handler(req, res) {
 
     const id = uid();
     const goal = 'Parts-list hunt — ' + partsList.length + ' lines';
-    const config = { kind: 'list', currency, partsList, results: null, totals: null };
+    const config = { kind: 'list', currency, filters, partsList, results: null, totals: null };
 
-    await sql`INSERT INTO projects (id, name, goal, config)
-      VALUES (${id}, ${name}, ${goal}, ${JSON.stringify(config)}::jsonb)`;
-
+    await sql`INSERT INTO projects (id, name, goal, config) VALUES (${id}, ${name}, ${goal}, ${JSON.stringify(config)}::jsonb)`;
     return res.status(200).json({ project: { id, name, goal, config } });
   } catch (e) {
     console.error('list-create error:', e);
