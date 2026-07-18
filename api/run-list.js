@@ -2,10 +2,9 @@ import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 
 /* Parts-list hunt engine. For every line, use Claude web_search to find real online sources +
- * prices (with product URL + kind). Prices parsed robustly (European formats), converted to AUD
- * via live FX. Product URLs captured from the actual web_search results and back-filled by
- * seller domain. A URL is NOT required to keep a source. Small chunks + parallelism + rate-limit
- * retry maximise per-part coverage within the serverless time budget. */
+ * prices (with product URL + kind). Prices parsed robustly (European formats), converted to AUD.
+ * Sources deduped per seller (cheapest kept). Product URLs captured from the actual search
+ * results and back-filled by seller domain, preferring real product pages over category pages. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -68,7 +67,12 @@ function matchUrl(label, urls) {
   const sk = alnum(String(label || '').split(/[·|\-–—]|\s{2,}| /)[0]);
   if (sk.length < 3) return null;
   const cand = urls.filter((u) => { const h = hostToken(u); return h && (h.includes(sk) || sk.includes(h)); });
-  cand.sort((a, b) => b.length - a.length);
+  cand.sort((a, b) => {
+    const pa = /\/\d{4,}\/?$/.test(a.split('?')[0]) ? 1 : 0;   // ends in a product id
+    const pb = /\/\d{4,}\/?$/.test(b.split('?')[0]) ? 1 : 0;
+    if (pa !== pb) return pb - pa;                             // product pages first
+    return b.length - a.length;                               // then deepest path
+  });
   return cand[0] || null;
 }
 
@@ -81,11 +85,11 @@ async function findChunk(parts, wants) {
   const system = [
     'You find CURRENT online prices for specific car parts by part number.',
     'For EACH part number given, run a web_search for that exact part number and read the EXACT displayed price from a seller that lists it.',
-    'Return ONLY a JSON object mapping the exact part number to an array of sources.',
-    'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": the product page URL if you have it (otherwise omit it), "kind": "oem"|"aftermarket"|"salvage"}.',
+    'Return ONLY a JSON object mapping the exact part number to an array of sources (at most one entry per seller).',
+    'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": the product page URL if you have it (the deep link to that exact part, not a category/search page; otherwise omit it), "kind": "oem"|"aftermarket"|"salvage"}.',
     'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Set "currency" to the currency actually shown; do not convert.',
     constraint,
-    'Include EVERY real seller you actually find with a listed price. A product URL is preferred but NOT required. Big OEM catalogues (teile.com, eurospares, design911, oempartsonline, pelican) often list these — check them. If nothing is found for a part, use an empty array for that part number.'
+    'Include EVERY real seller you actually find with a listed price. A product URL is preferred but NOT required. Big OEM catalogues (teile.com, eurospares, design911, oempartsonline, pelican) often list these. If nothing is found for a part, use an empty array for that part number.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
@@ -177,7 +181,16 @@ export default async function handler(req, res) {
         .map((s) => ({ label: s && s.label || '', location: s && s.location || '', url: (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null, kind: normKind(s && s.kind), priceAud: toAud(parseAmount(s && s.price), s && s.currency) }))
         .filter((s) => s.priceAud != null && s.priceAud > 0);
       if (wants.length) raw = raw.filter((s) => wants.includes(s.kind));
-      raw.sort((a, b) => a.priceAud - b.priceAud);
+
+      // dedupe per seller — keep the cheapest entry for each seller (kills duplicate/stale prices)
+      const seen = {}; const deduped = [];
+      for (const s of raw) {
+        const k = hostToken(s.url) || alnum(s.label);
+        if (!k) { deduped.push(s); continue; }
+        if (seen[k] == null) { seen[k] = deduped.length; deduped.push(s); }
+        else if (s.priceAud < deduped[seen[k]].priceAud) deduped[seen[k]] = s;
+      }
+      raw = deduped.sort((a, b) => a.priceAud - b.priceAud);
 
       const rawEst = parseAmount(p.est);
       const estA = rawEst == null ? null : (toAud(rawEst, estCur) != null ? toAud(rawEst, estCur) : rawEst);
