@@ -2,9 +2,9 @@ import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 
 /* Parts-list hunt engine. For every line, use Claude web_search to find real online sources +
- * prices (with product URL + kind). Prices are parsed robustly (handles European formats like
- * "3.568,70"), all money is converted to AUD via live FX, product URLs are captured from the
- * actual web_search results and back-filled by seller domain. */
+ * prices (with product URL + kind). Prices are parsed robustly (handles European formats), all
+ * money is converted to AUD via live FX, and product URLs are captured from the actual
+ * web_search results and back-filled by seller domain. A URL is NOT required to keep a source. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -12,23 +12,22 @@ const MODEL = process.env.LIST_MODEL || process.env.SEARCH_MODEL || 'claude-sonn
 const CHUNK = Number(process.env.LIST_CHUNK || 5);
 const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 4);
 const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 250000);
-const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 4) };
+const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 5) };
 
-// Robust numeric parse: handles "3.568,70" (EU), "3,568.70" (US), "3568.70", "R 12 745,01".
 function parseAmount(v) {
   if (typeof v === 'number') return isFinite(v) ? v : null;
   let s = String(v == null ? '' : v).replace(/[^0-9.,]/g, '');
   if (!s) return null;
   const lc = s.lastIndexOf(','), ld = s.lastIndexOf('.');
   if (lc > -1 && ld > -1) {
-    if (lc > ld) s = s.replace(/\./g, '').replace(',', '.');   // European: 3.568,70
-    else s = s.replace(/,/g, '');                              // US: 3,568.70
+    if (lc > ld) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(/,/g, '');
   } else if (lc > -1) {
     const after = s.length - lc - 1;
     s = (after === 1 || after === 2) ? s.replace(',', '.') : s.replace(/,/g, '');
   } else if (ld > -1) {
     const after = s.length - ld - 1;
-    if (after === 3) s = s.replace(/\./g, '');                 // 3.568 -> 3568 (thousands)
+    if (after === 3) s = s.replace(/\./g, '');
   }
   const n = parseFloat(s);
   return isFinite(n) ? n : null;
@@ -81,10 +80,10 @@ async function findChunk(parts, wants) {
     'You find CURRENT online prices for specific car parts by part number.',
     'For each part, use web_search to find real online sellers that list it for sale and read the EXACT displayed price.',
     'Return ONLY a JSON object mapping the exact part number to an array of sources.',
-    'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": exact product page URL copied verbatim from the results, "kind": "oem"|"aftermarket"|"salvage"}.',
-    'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Always set "currency" to the currency actually shown (EUR, USD, GBP, ZAR, AUD, ...). Do not guess or convert; report the number and currency exactly as displayed.',
+    'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": the product page URL if you have it (otherwise omit it), "kind": "oem"|"aftermarket"|"salvage"}.',
+    'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Set "currency" to the currency actually shown; do not convert.',
     constraint,
-    'Include ONLY real sellers with a listed price and a real product URL. If nothing is found for a part, use an empty array.'
+    'Include EVERY real seller you actually find with a listed price. A product URL is preferred but NOT required — never drop a real, priced source just because you are unsure of its exact URL. If nothing is found for a part, use an empty array.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
