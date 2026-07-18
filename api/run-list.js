@@ -1,10 +1,10 @@
 import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 
-/* Parts-list hunt engine. For every line, use Claude web_search to find real online sources +
- * prices (with product URL + kind). Prices parsed robustly (European formats), converted to AUD.
- * Sources deduped per seller (cheapest kept). Product URLs captured from the actual search
- * results and back-filled by seller domain, preferring real product pages over category pages. */
+/* Parts-list hunt engine. For every line, use Claude web_search to find MULTIPLE real online
+ * sellers + prices (with product URL + kind) so the buyer can compare. Prices parsed robustly
+ * (European formats), converted to AUD. Sources deduped per seller (cheapest kept). Product URLs
+ * captured from the actual search results and back-filled, preferring product pages over categories. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -12,7 +12,7 @@ const MODEL = process.env.LIST_MODEL || process.env.SEARCH_MODEL || 'claude-sonn
 const CHUNK = Number(process.env.LIST_CHUNK || 3);
 const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 6);
 const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 260000);
-const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 5) };
+const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 6) };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function parseAmount(v) {
@@ -68,10 +68,10 @@ function matchUrl(label, urls) {
   if (sk.length < 3) return null;
   const cand = urls.filter((u) => { const h = hostToken(u); return h && (h.includes(sk) || sk.includes(h)); });
   cand.sort((a, b) => {
-    const pa = /\/\d{4,}\/?$/.test(a.split('?')[0]) ? 1 : 0;   // ends in a product id
+    const pa = /\/\d{4,}\/?$/.test(a.split('?')[0]) ? 1 : 0;
     const pb = /\/\d{4,}\/?$/.test(b.split('?')[0]) ? 1 : 0;
-    if (pa !== pb) return pb - pa;                             // product pages first
-    return b.length - a.length;                               // then deepest path
+    if (pa !== pb) return pb - pa;
+    return b.length - a.length;
   });
   return cand[0] || null;
 }
@@ -84,12 +84,12 @@ async function findChunk(parts, wants) {
     : 'Include OEM/genuine, aftermarket and salvage/used sources.';
   const system = [
     'You find CURRENT online prices for specific car parts by part number.',
-    'For EACH part number given, run a web_search for that exact part number and read the EXACT displayed price from a seller that lists it.',
-    'Return ONLY a JSON object mapping the exact part number to an array of sources (at most one entry per seller).',
+    'For EACH part number given, run a web_search for that exact part number and read the EXACT displayed price. List AS MANY distinct sellers as your results show that stock it — aim for 2 to 4 sources per part so the buyer can compare and find the cheapest. Do NOT stop after the first seller.',
+    'Return ONLY a JSON object mapping the exact part number to an array of sources (one entry per distinct seller).',
     'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": the product page URL if you have it (the deep link to that exact part, not a category/search page; otherwise omit it), "kind": "oem"|"aftermarket"|"salvage"}.',
     'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Set "currency" to the currency actually shown; do not convert.',
     constraint,
-    'Include EVERY real seller you actually find with a listed price. A product URL is preferred but NOT required. Big OEM catalogues (teile.com, eurospares, design911, oempartsonline, pelican) often list these. If nothing is found for a part, use an empty array for that part number.'
+    'Include EVERY distinct real seller you find with a listed price. Check SEVERAL catalogues, not just one — e.g. teile.com, eurospares, design911, oempartsonline, pelican parts, ecs tuning, fcp euro, suncoast, autohaus, plus eBay listings — many stock these. If nothing is found for a part, use an empty array for that part number.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
@@ -110,7 +110,7 @@ async function findChunk(parts, wants) {
         r = await fetch(ANTHROPIC, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VER },
-          body: JSON.stringify({ model: MODEL, max_tokens: 4000, system, messages, tools: [SEARCH_TOOL] }),
+          body: JSON.stringify({ model: MODEL, max_tokens: 4500, system, messages, tools: [SEARCH_TOOL] }),
           signal: c.signal
         });
       } finally { clearTimeout(t); }
@@ -182,7 +182,6 @@ export default async function handler(req, res) {
         .filter((s) => s.priceAud != null && s.priceAud > 0);
       if (wants.length) raw = raw.filter((s) => wants.includes(s.kind));
 
-      // dedupe per seller — keep the cheapest entry for each seller (kills duplicate/stale prices)
       const seen = {}; const deduped = [];
       for (const s of raw) {
         const k = hostToken(s.url) || alnum(s.label);
@@ -202,7 +201,7 @@ export default async function handler(req, res) {
         if (est != null && foundP < est) { status = 'saving'; saving = Math.round(est - foundP); }
         else status = 'nocheaper';
       }
-      const alts = raw.slice(0, 6).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind }));
+      const alts = raw.slice(0, 8).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind }));
       return { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
     });
 

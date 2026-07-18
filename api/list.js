@@ -17,6 +17,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       project: { id: p.id, name: p.name, goal: p.goal, run_count: p.run_count, last_run_at: p.last_run_at },
       currency: cfg.currency || 'AUD',
+      filters: cfg.filters || {},
       partsList: cfg.partsList || [],
       results: cfg.results || null,
       totals: cfg.totals || null,
