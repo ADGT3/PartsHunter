@@ -3,11 +3,9 @@ import { requireAuth } from './_auth.js';
 
 /* Parts-list hunt engine.
  * POST { projectId } -> for every line in the project's partsList, use Claude web_search
- * to find real online sources + prices, convert each to AUD via live FX, pick the cheapest,
- * compute per-line savings + totals, and store back into the project's config.
- *
- * "No batches" = one request. Internally the lines are processed in parallel chunks with a
- * hard time budget so ~89 lines fit inside the serverless limit. */
+ * to find real online sources + prices (with their product URL), convert each to AUD via
+ * live FX, pick the cheapest, compute per-line savings + totals, and store back into config.
+ * One request; internally the lines run in parallel chunks with a hard time budget. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -17,7 +15,6 @@ const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 4);
 const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 250000);
 const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 4) };
 
-// Live FX -> returns fn(price, currency) -> AUD (or null if unknown).
 async function fxToAud() {
   let rates = { AUD: 1, USD: 0.66, EUR: 0.61, GBP: 0.52, ZAR: 12, NZD: 1.09, JPY: 100, CAD: 0.9, AED: 2.4 };
   try {
@@ -27,7 +24,6 @@ async function fxToAud() {
     if (r.ok) { const d = await r.json(); if (d && d.rates && d.rates.USD) rates = d.rates; }
   } catch (e) { /* keep fallback */ }
   const alias = { R: 'ZAR', 'R$': 'BRL', '£': 'GBP', '€': 'EUR', $: 'USD', 'US$': 'USD', 'A$': 'AUD', 'AU$': 'AUD', '¥': 'JPY' };
-  // rates[C] = units of C per 1 AUD; audPrice = priceC / rates[C]
   return function (price, cur) {
     if (price == null || isNaN(price)) return null;
     let c = String(cur || 'AUD').trim().toUpperCase();
@@ -45,8 +41,8 @@ async function findChunk(parts) {
     'You find CURRENT online prices for specific car parts by part number.',
     'For each part you are given, use web_search to find real online sellers that list it for sale and read the price.',
     'Return ONLY a JSON object mapping the exact part number to an array of sources.',
-    'Each source: {"label": seller name, "location": country or region or "", "price": number, "currency": ISO code e.g. "USD"}.',
-    'Include ONLY real sellers you actually found with a listed price. Never invent sellers or prices. Price must be numeric (no symbols/commas). If nothing is found for a part, use an empty array.'
+    'Each source: {"label": seller name, "location": country or region or "", "price": number, "currency": ISO code e.g. "USD", "url": the direct product/listing page URL on that seller}.',
+    'Include ONLY real sellers you actually found with a listed price and a real product URL. Never invent sellers, prices or URLs. Price must be numeric (no symbols/commas). If nothing is found for a part, use an empty array.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
@@ -108,19 +104,19 @@ export default async function handler(req, res) {
 
     const results = parts.map((p) => {
       const raw = (found[p.pn] || [])
-        .map((s) => ({ label: s && s.label || '', location: s && s.location || '', priceAud: toAud(Number(s && s.price), s && s.currency) }))
+        .map((s) => ({ label: s && s.label || '', location: s && s.location || '', url: (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null, priceAud: toAud(Number(s && s.price), s && s.currency) }))
         .filter((s) => s.priceAud != null && s.priceAud > 0);
       raw.sort((a, b) => a.priceAud - b.priceAud);
 
       const est = (p.est == null || isNaN(Number(p.est))) ? null : Number(p.est);
-      let status = 'notfound', foundP = null, source = null, location = null, saving = 0;
+      let status = 'notfound', foundP = null, source = null, location = null, bestUrl = null, saving = 0;
       if (raw.length) {
-        foundP = Math.round(raw[0].priceAud); source = raw[0].label; location = raw[0].location;
+        foundP = Math.round(raw[0].priceAud); source = raw[0].label; location = raw[0].location; bestUrl = raw[0].url;
         if (est != null && foundP < est) { status = 'saving'; saving = Math.round(est - foundP); }
         else status = 'nocheaper';
       }
-      const alts = raw.slice(0, 6).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0 }));
-      return { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, matches: raw.length, status, saving, alts };
+      const alts = raw.slice(0, 6).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url }));
+      return { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, matches: raw.length, status, saving, alts };
     });
 
     const estTotal = Math.round(results.reduce((n, r) => n + (r.est || 0), 0));

@@ -1,7 +1,7 @@
 import { sql, ensureSchema } from './_db.js';
 import { requireAuth } from './_auth.js';
 
-/* GET /api/list?id=... -> the parts-list project (partsList, results, totals). */
+/* GET /api/list?id=... -> the parts-list project (partsList, results, totals, feedback). */
 
 export default async function handler(req, res) {
   try {
@@ -13,12 +13,14 @@ export default async function handler(req, res) {
     if (!rows.length) return res.status(404).json({ error: 'project not found' });
     const p = rows[0];
     const cfg = p.config || {};
+    const { rows: feedback } = await sql`SELECT listing_url, vote FROM feedback WHERE project_id = ${id}`;
     return res.status(200).json({
       project: { id: p.id, name: p.name, goal: p.goal, run_count: p.run_count, last_run_at: p.last_run_at },
       currency: cfg.currency || 'AUD',
       partsList: cfg.partsList || [],
       results: cfg.results || null,
-      totals: cfg.totals || null
+      totals: cfg.totals || null,
+      feedback: feedback || []
     });
   } catch (e) {
     console.error('list get error:', e);
