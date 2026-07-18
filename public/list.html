@@ -29,8 +29,50 @@
 
 <main class="ps-main">
   <div onclick="location.href='/index.html'" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#9aa0a6;cursor:pointer;margin-bottom:20px">&#8592; All projects</div>
-  <div id="kicker" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#ff6a3d;margin-bottom:10px">// PARTS LIST HUNT</div>
-  <h1 id="pName" style="font-family:Archivo,sans-serif;font-weight:800;font-size:34px;margin:0 0 22px;letter-spacing:-.02em">Loading…</h1>
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:8px">
+    <div>
+      <div id="kicker" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#ff6a3d;margin-bottom:10px">// PARTS LIST HUNT</div>
+      <h1 id="pName" style="font-family:Archivo,sans-serif;font-weight:800;font-size:34px;margin:0;letter-spacing:-.02em">Loading…</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div id="editBtn" style="display:flex;align-items:center;gap:7px;padding:10px 16px;border-radius:10px;border:1px solid #2a2e34;color:#e9ebed;font-weight:600;font-size:13.5px;cursor:pointer">&#9998; Edit search</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 15px;background:#131518;border:1px solid #23272c;border-radius:10px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#58c98a;animation:ps-pulse 2s ease infinite"></span>
+        <span id="learnPill" style="font-size:13px;color:#c8cccf">Learning</span>
+      </div>
+    </div>
+  </div>
+  <div id="pGoal" class="muted" style="font-size:13.5px;max-width:640px;margin:2px 0 0"></div>
+
+  <!-- Edit search = parts-list target (same fields as the New Hunt upload screen) -->
+  <div id="editPanel" style="display:none;background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px;margin:18px 0">
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">PROJECT NAME</label>
+    <input id="eName" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:22px">
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES TO HUNT</label>
+    <div id="eSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:8px"></div>
+    <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Leave all off to hunt every kind, or pick some — e.g. OEM only, or OEM + Aftermarket.</div>
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">ESTIMATE CURRENCY</label>
+    <select id="eCur" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:8px">
+      <option value="AUD">AUD — Australian dollar (default)</option>
+      <option value="USD">USD — US dollar</option>
+      <option value="EUR">EUR — Euro</option>
+      <option value="GBP">GBP — British pound</option>
+      <option value="ZAR">ZAR — South African rand</option>
+      <option value="NZD">NZD — New Zealand dollar</option>
+    </select>
+    <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Your estimate is treated as AUD unless you pick another currency here — everything is converted to AUD for the comparison.</div>
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:13px 15px;background:rgba(255,90,44,.08);border:1px solid rgba(255,90,44,.22);border-radius:10px;margin-bottom:24px">
+      <span style="color:#ff6a3d;font-size:15px;line-height:1.4">&#9670;</span>
+      <span style="font-size:13px;color:#c8cccf;line-height:1.5">Updating re-hunts every part with these sources and currency.</span>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div id="updateBtn" style="padding:13px 22px;border-radius:9px;font-weight:700;font-size:14.5px;cursor:pointer;background:#ff5a2c;color:#0d0e10">Update &amp; re-run &#8594;</div>
+      <div id="cancelEdit" style="padding:13px 22px;border-radius:9px;border:1px solid #2a2e34;color:#a3a8af;font-weight:600;font-size:14.5px;cursor:pointer">Cancel</div>
+    </div>
+    <div id="editMsg" style="margin-top:14px"></div>
+  </div>
+
   <div id="body"></div>
 </main>
 
@@ -43,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   PH.updateWatchCount();
   const id = PH.qs('id'), wantRun = PH.qs('run') === '1';
   const body = document.getElementById('body');
+  const $ = (i) => document.getElementById(i);
   const money = (n) => n == null ? '—' : '$' + Math.round(Number(n)).toLocaleString('en-AU');
   const STAT = { saving: { label: 'SAVING', color: '#58c98a', bg: 'rgba(88,201,138,.13)' }, nocheaper: { label: 'OEM BEST', color: '#8b9096', bg: 'rgba(139,144,150,.12)' }, notfound: { label: 'NO MATCH', color: '#e0a53c', bg: 'rgba(224,165,60,.13)' } };
   const KIND = { oem: 'OEM', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
@@ -50,9 +93,53 @@ document.addEventListener('DOMContentLoaded', async function () {
   const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
   const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
   let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {};
+  const esrc = { oem: false, aftermarket: false, salvage: false };
+  const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
   const keyOf = (p, a) => a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''));
   const hrefOf = (p, a) => a.url || ('https://www.google.com/search?q=' + encodeURIComponent(((p.pn || p.desc || '') + ' ' + (a.label || '')).trim()));
+
+  function learn() {
+    const n = Object.keys(feedback).length;
+    $('learnPill').innerHTML = n
+      ? 'Learning &mdash; <span style="color:#58c98a;font-weight:600">' + n + ' signal' + (n === 1 ? '' : 's') + '</span> from your feedback'
+      : 'Learning';
+  }
+
+  /* ---------- Edit search (upload-style fields) ---------- */
+  function drawESrc() {
+    $('eSrc').innerHTML = SRC.map(([k, label]) => {
+      const on = esrc[k];
+      const style = 'display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s;' +
+        (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:#0f1113;border:1px solid #2a2e34;color:#8b9096;');
+      const dot = 'width:8px;height:8px;border-radius:50%;background:' + (on ? '#ff5a2c' : '#3a4046') + ';';
+      return '<div class="echp" data-k="' + k + '" style="' + style + '"><span style="' + dot + '"></span>' + label + '</div>';
+    }).join('');
+    $('eSrc').querySelectorAll('.echp').forEach((el) => el.addEventListener('click', () => { esrc[el.dataset.k] = !esrc[el.dataset.k]; drawESrc(); }));
+  }
+  function openEdit() {
+    if (!data) return;
+    const f = data.filters || {};
+    $('eName').value = data.project.name || '';
+    esrc.oem = !!f.oem; esrc.aftermarket = !!f.aftermarket; esrc.salvage = !!f.salvage; drawESrc();
+    $('eCur').value = data.currency || 'AUD';
+    $('editPanel').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  $('editBtn').addEventListener('click', () => { const p = $('editPanel'); if (p.style.display === 'block') p.style.display = 'none'; else openEdit(); });
+  $('cancelEdit').addEventListener('click', () => { $('editPanel').style.display = 'none'; });
+  $('updateBtn').addEventListener('click', async () => {
+    const name = $('eName').value.trim();
+    if (!name) { $('editMsg').innerHTML = '<div class="banner err">Name is required.</div>'; return; }
+    const filters = { oem: esrc.oem, aftermarket: esrc.aftermarket, salvage: esrc.salvage };
+    const config = { kind: 'list', currency: $('eCur').value, filters, partsList: data.partsList || [], results: data.results || null, totals: data.totals || null };
+    $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Saving and re-hunting every part — this can take a couple of minutes.</div>';
+    try {
+      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, config } });
+      $('editPanel').style.display = 'none'; $('editMsg').innerHTML = '';
+      await runHunt();
+    } catch (e) { $('editMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
+  });
 
   async function loadData() { data = await PH.api('/api/list?id=' + encodeURIComponent(id)); feedback = fbMap(data.feedback); }
   async function runHunt() {
@@ -109,12 +196,14 @@ document.addEventListener('DOMContentLoaded', async function () {
   }
 
   function render() {
-    document.getElementById('pName').textContent = data.project.name;
+    $('pName').textContent = data.project.name;
+    $('pGoal').textContent = data.project.goal || '';
+    learn();
     const parts = data.results || data.partsList || [];
-    document.getElementById('kicker').textContent = '// PARTS LIST HUNT — ' + parts.length + ' LINES';
+    $('kicker').textContent = '// PARTS LIST HUNT — ' + parts.length + ' LINES';
     if (!data.results) {
       body.innerHTML = '<div class="banner" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap"><span>' + (data.partsList || []).length + ' parts ready to hunt.</span><button class="btn" id="runBtn">Hunt all ' + (data.partsList || []).length + ' parts &#8594;</button></div>';
-      document.getElementById('runBtn').addEventListener('click', runHunt); return;
+      $('runBtn').addEventListener('click', runHunt); return;
     }
     const t = data.totals || { estTotal: 0, foundTotal: 0, saveTotal: 0 };
     const pct = t.estTotal ? Math.round(t.saveTotal / t.estTotal * 100) : 0, r = data.results;
@@ -128,9 +217,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         '<div style="padding:18px 20px;border:1px solid rgba(88,201,138,.35);border-radius:13px;background:linear-gradient(120deg,rgba(88,201,138,.12),rgba(88,201,138,.02))"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#58c98a;margin-bottom:8px">POTENTIAL SAVING</div><div style="display:flex;align-items:baseline;gap:9px"><div style="font-family:Archivo,sans-serif;font-weight:800;font-size:27px;color:#58c98a">' + money(t.saveTotal) + '</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:13px;color:#58c98a">−' + pct + '%</div></div></div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Status</span><span id="schips">' + chip('s', 'all', sfilter, 'All', sc.all) + chip('s', 'saving', sfilter, 'Savings', sc.saving) + chip('s', 'nocheaper', sfilter, 'OEM best', sc.nocheaper) + chip('s', 'notfound', sfilter, 'No match', sc.notfound) + '</span></div>' +
-      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem', kfilter, 'OEM', kc.oem) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span></div>' +
+      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem', kfilter, 'OEM', kc.oem) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span><div style="flex:1"></div><span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#6b7076">Rate results to sharpen the next run &#8594;</span></div>' +
       '<div id="rows" style="display:flex;flex-direction:column;gap:12px"></div>';
-    const rh = document.getElementById('rehunt'); if (rh) rh.addEventListener('click', runHunt);
+    const rh = $('rehunt'); if (rh) rh.addEventListener('click', runHunt);
     document.querySelectorAll('#schips .schip').forEach((el) => el.addEventListener('click', () => { sfilter = el.dataset.v; render(); }));
     document.querySelectorAll('#kchips .kchip').forEach((el) => el.addEventListener('click', () => { kfilter = el.dataset.v; render(); }));
     drawRows();
@@ -138,7 +227,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   function drawRows() {
     const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || p.kind === kfilter));
-    const el = document.getElementById('rows');
+    const el = $('rows');
     el.innerHTML = shown.map(rowHtml).join('') || '<div class="banner">Nothing in this filter.</div>';
     el.querySelectorAll('[data-id]').forEach((wrap) => {
       const p = data.results.find((x) => x.id === wrap.dataset.id);
@@ -158,7 +247,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     try {
       await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: key, title: p ? p.desc : '', vote: value } });
       if (value === 0) delete feedback[key]; else feedback[key] = value;
-      drawRows();
+      learn(); drawRows();
     } catch (e) { PH.toast('Vote failed: ' + e.message); }
   }
 
