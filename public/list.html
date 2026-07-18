@@ -48,9 +48,11 @@ document.addEventListener('DOMContentLoaded', async function () {
   const KIND = { oem: 'OEM', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
   const voteStyle = (on, kind) => { const b = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .12s;"; if (on && kind === 'up') return b + "background:rgba(88,201,138,.16);border:1px solid #58c98a;color:#58c98a;"; if (on && kind === 'down') return b + "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;"; return b + "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;"; };
   const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
-  const badge = (label, color, bg, fs) => "font-family:'JetBrains Mono',monospace;font-size:" + (fs || 10) + "px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
+  const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
   let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {};
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
+  // a stable key for save/vote — the source URL, or a synthetic key when the search returned no URL
+  const keyOf = (p, a) => a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''));
 
   async function loadData() { data = await PH.api('/api/list?id=' + encodeURIComponent(id)); feedback = fbMap(data.feedback); }
   async function runHunt() {
@@ -66,7 +68,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   // A source found, rendered as a full listing card (same style as search Results).
   function sourceCard(p, a) {
-    const url = a.url, v = feedback[url] || 0, saved = url && PH.watch.has(url);
+    const url = a.url, key = keyOf(p, a), v = feedback[key] || 0, saved = PH.watch.has(key);
     const bLabel = a.best ? 'BEST' : (KIND[a.kind] || 'ALT');
     const bStyle = a.best ? badge('BEST', '#58c98a', 'rgba(88,201,138,.13)') : badge(bLabel, '#8b9096', 'rgba(139,144,150,.12)');
     const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:14px 16px;text-decoration:none;color:inherit;background:#16181b;border:1px solid " + (a.best ? 'rgba(88,201,138,.4)' : '#24282d') + ";border-radius:12px;" + (url ? 'cursor:pointer;' : '');
@@ -74,11 +76,13 @@ document.addEventListener('DOMContentLoaded', async function () {
     const inner = thumb +
       '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="' + bStyle + '">' + bLabel + '</span>' +
         '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15px;margin:0;line-height:1.3">' + PH.esc(a.label) + '</h3></div>' +
-        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + PH.esc(p.desc || '') + ' &nbsp;·&nbsp; PN ' + PH.esc(p.pn || '—') + '</div></div>' +
+        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + PH.esc(p.desc || '') + ' &nbsp;·&nbsp; PN ' + PH.esc(p.pn || '—') + (url ? '' : ' &nbsp;·&nbsp; no link') + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:14px;flex-shrink:0" data-nolink>' +
         '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:19px;white-space:nowrap;color:' + (a.best ? '#58c98a' : '#e9ebed') + '">' + money(a.price) + '</div>' +
-        '<div style="display:flex;gap:7px" data-url="' + PH.esc(url || '') + '">' +
-          (url ? '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div><div class="jup" title="Good source" style="' + voteStyle(v === 1, 'up') + '">▲</div><div class="jdown" title="Bad source" style="' + voteStyle(v === -1, 'down') + '">▼</div>' : '') +
+        '<div style="display:flex;gap:7px" data-key="' + PH.esc(key) + '" data-url="' + PH.esc(url || '') + '">' +
+          '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div>' +
+          '<div class="jup" title="Good source" style="' + voteStyle(v === 1, 'up') + '">▲</div>' +
+          '<div class="jdown" title="Bad source" style="' + voteStyle(v === -1, 'down') + '">▼</div>' +
         '</div></div>';
     return url ? '<a href="' + PH.esc(url) + '" target="_blank" rel="noopener" style="' + rowStyle + '">' + inner + '</a>' : '<div style="' + rowStyle + '">' + inner + '</div>';
   }
@@ -140,20 +144,20 @@ document.addEventListener('DOMContentLoaded', async function () {
       const p = data.results.find((x) => x.id === wrap.dataset.id);
       const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
       const chev = wrap.querySelector('.chev'); if (chev) chev.addEventListener('click', (e) => { stop(e); open[p.id] = !open[p.id]; drawRows(); });
-      wrap.querySelectorAll('[data-url]').forEach((box) => {
-        const url = box.dataset.url; if (!url) return;
-        const alt = (p.alts || []).find((a) => a.url === url);
+      wrap.querySelectorAll('[data-key]').forEach((box) => {
+        const key = box.dataset.key, url = box.dataset.url;
+        const alt = (p.alts || []).find((a) => (a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''))) === key);
         const up = box.querySelector('.jup'), down = box.querySelector('.jdown'), sv = box.querySelector('.jsave');
-        if (up) up.addEventListener('click', (e) => { stop(e); voteSrc(p, url, (feedback[url] > 0) ? 0 : 1); });
-        if (down) down.addEventListener('click', (e) => { stop(e); voteSrc(p, url, (feedback[url] < 0) ? 0 : -1); });
-        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url, title: p.desc, price: alt ? alt.price : null, seller: alt ? alt.label : '', section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(url) ? 'Saved to watchlist' : 'Removed from watchlist'); });
+        if (up) up.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] > 0) ? 0 : 1); });
+        if (down) down.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] < 0) ? 0 : -1); });
+        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url: url || key, title: (alt ? alt.label + ' — ' : '') + (p.desc || ''), price: alt ? alt.price : null, seller: alt ? alt.label : '', section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(key) ? 'Saved to watchlist' : 'Removed from watchlist'); });
       });
     });
   }
-  async function voteSrc(p, url, value) {
+  async function voteSrc(p, key, value) {
     try {
-      await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url, title: p ? p.desc : '', vote: value } });
-      if (value === 0) delete feedback[url]; else feedback[url] = value;
+      await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: key, title: p ? p.desc : '', vote: value } });
+      if (value === 0) delete feedback[key]; else feedback[key] = value;
       drawRows();
     } catch (e) { PH.toast('Vote failed: ' + e.message); }
   }
