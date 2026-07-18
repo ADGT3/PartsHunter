@@ -52,7 +52,6 @@ document.addEventListener('DOMContentLoaded', async function () {
   let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {};
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
   const keyOf = (p, a) => a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''));
-  // Real product URL when the search found one; otherwise a Google search that finds the listing.
   const hrefOf = (p, a) => a.url || ('https://www.google.com/search?q=' + encodeURIComponent(((p.pn || p.desc || '') + ' ' + (a.label || '')).trim()));
 
   async function loadData() { data = await PH.api('/api/list?id=' + encodeURIComponent(id)); feedback = fbMap(data.feedback); }
@@ -67,7 +66,6 @@ document.addEventListener('DOMContentLoaded', async function () {
     return '<span class="' + kind + 'chip" data-v="' + val + '" style="' + style + '">' + label + (n != null ? ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;opacity:.7">' + n + '</span>' : '') + '</span>';
   }
 
-  // A source found, rendered as a full listing card (same style as search Results) — always a link.
   function sourceCard(p, a) {
     const key = keyOf(p, a), href = hrefOf(p, a), v = feedback[key] || 0, saved = PH.watch.has(href);
     const bLabel = a.best ? 'BEST' : (KIND[a.kind] || 'ALT');
@@ -123,6 +121,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const sc = { all: r.length, saving: r.filter((x) => x.status === 'saving').length, nocheaper: r.filter((x) => x.status === 'nocheaper').length, notfound: r.filter((x) => x.status === 'notfound').length };
     const kc = { all: r.length, oem: r.filter((x) => x.kind === 'oem').length, aftermarket: r.filter((x) => x.kind === 'aftermarket').length, salvage: r.filter((x) => x.kind === 'salvage').length };
     body.innerHTML =
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="btn grey" id="rehunt">&#8635; Re-hunt all parts</button></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">' +
         '<div style="padding:18px 20px;border:1px solid #22262b;border-radius:13px;background:#131518"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#6b7076;margin-bottom:8px">ESTIMATE TOTAL</div><div style="font-family:Archivo,sans-serif;font-weight:700;font-size:27px">' + money(t.estTotal) + '</div></div>' +
         '<div style="padding:18px 20px;border:1px solid #22262b;border-radius:13px;background:#131518"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#6b7076;margin-bottom:8px">BEST-FOUND TOTAL</div><div style="font-family:Archivo,sans-serif;font-weight:700;font-size:27px">' + money(t.foundTotal) + '</div></div>' +
@@ -131,6 +130,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Status</span><span id="schips">' + chip('s', 'all', sfilter, 'All', sc.all) + chip('s', 'saving', sfilter, 'Savings', sc.saving) + chip('s', 'nocheaper', sfilter, 'OEM best', sc.nocheaper) + chip('s', 'notfound', sfilter, 'No match', sc.notfound) + '</span></div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem', kfilter, 'OEM', kc.oem) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span></div>' +
       '<div id="rows" style="display:flex;flex-direction:column;gap:12px"></div>';
+    const rh = document.getElementById('rehunt'); if (rh) rh.addEventListener('click', runHunt);
     document.querySelectorAll('#schips .schip').forEach((el) => el.addEventListener('click', () => { sfilter = el.dataset.v; render(); }));
     document.querySelectorAll('#kchips .kchip').forEach((el) => el.addEventListener('click', () => { kfilter = el.dataset.v; render(); }));
     drawRows();
@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         const up = box.querySelector('.jup'), down = box.querySelector('.jdown'), sv = box.querySelector('.jsave');
         if (up) up.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] > 0) ? 0 : 1); });
         if (down) down.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] < 0) ? 0 : -1); });
-        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url: href, title: (alt ? alt.label + ' — ' : '') + (p.desc || ''), price: alt ? alt.price : null, seller: alt ? alt.label : '', section: 'Parts list', projectId: id, projectName: data.project.name, key: key }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(href) ? 'Saved to watchlist' : 'Removed from watchlist'); });
+        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url: href, title: (alt ? alt.label + ' — ' : '') + (p.desc || ''), price: alt ? alt.price : null, seller: alt ? alt.label : '', section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(href) ? 'Saved to watchlist' : 'Removed from watchlist'); });
       });
     });
   }

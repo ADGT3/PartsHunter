@@ -40,7 +40,6 @@
       <div class="tab" data-tab="upload" style="flex:1;text-align:center;padding:11px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;color:#8b9096">Upload a parts list</div>
     </div>
 
-    <!-- describe -->
     <div id="tabDescribe" style="background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px">
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">PROJECT NAME</label>
       <input id="pname" placeholder="e.g. E30 M3 front bumper" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:22px">
@@ -65,11 +64,20 @@
       <div id="createMsg" style="margin-top:14px"></div>
     </div>
 
-    <!-- upload -->
     <div id="tabUpload" style="display:none;background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px">
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES TO HUNT</label>
       <div id="lSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:8px"></div>
       <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Leave all off to hunt every kind, or pick some — e.g. OEM only, or OEM + Aftermarket.</div>
+      <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">ESTIMATE CURRENCY</label>
+      <select id="lCur" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:8px">
+        <option value="AUD">AUD — Australian dollar</option>
+        <option value="ZAR">ZAR — South African rand</option>
+        <option value="USD">USD — US dollar</option>
+        <option value="EUR">EUR — Euro</option>
+        <option value="GBP">GBP — British pound</option>
+        <option value="NZD">NZD — New Zealand dollar</option>
+      </select>
+      <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">The currency the prices in your estimate are in — everything is converted to AUD for the comparison.</div>
       <div id="dropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 20px;border:1.5px dashed #2f343a;border-radius:14px;cursor:pointer;color:#8b9096">
         <div style="width:52px;height:52px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:24px">⭱</div>
         <div style="font-size:15px;font-weight:600;color:#e9ebed">Drop an estimate or parts list here</div>
@@ -152,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function () {
     catch (e) { $('createMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
   });
 
-  /* ---------- upload / parse ---------- */
+  /* upload / parse */
   let parsed = { name: '', lines: [] };
   const fileInput = $('fileInput');
   $('dropZone').addEventListener('click', () => fileInput.click());
@@ -198,20 +206,22 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   function showPreview(filename) {
     $('listMsg').innerHTML = ''; $('dropZone').style.display = 'none';
+    const cur = $('lCur').value;
+    const fmt = (n) => n == null ? '—' : cur + ' ' + Math.round(Number(n)).toLocaleString('en-AU');
     const estTotal = parsed.lines.reduce((n, l) => n + (l.est || 0), 0);
     const rows = parsed.lines.map((l) =>
       '<div style="display:grid;grid-template-columns:1fr 130px 46px 92px;gap:10px;padding:11px 14px;border-top:1px solid #1c1f23;align-items:center;font-size:13px">' +
       '<span style="color:#e9ebed;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + PH.esc(l.desc || '') + '</span>' +
       '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#9aa0a6">' + PH.esc(l.pn || '—') + '</span>' +
       '<span style="font-family:\'JetBrains Mono\',monospace;color:#9aa0a6">' + (l.qty != null ? l.qty : '—') + '</span>' +
-      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;text-align:right;color:#c8cccf">' + (l.est != null ? money(l.est) : '—') + '</span></div>'
+      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;text-align:right;color:#c8cccf">' + (l.est != null ? fmt(l.est) : '—') + '</span></div>'
     ).join('');
     $('preview').style.display = 'block';
     $('preview').innerHTML =
       '<div style="display:flex;align-items:center;gap:12px;padding:13px 15px;background:rgba(88,201,138,.08);border:1px solid rgba(88,201,138,.25);border-radius:10px;margin-bottom:18px">' +
         '<span style="width:34px;height:34px;border-radius:8px;background:rgba(88,201,138,.15);color:#58c98a;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">✓</span>' +
         '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">' + PH.esc(filename) + '</div>' +
-        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8b9096">' + parsed.lines.length + ' parts parsed · est. total ' + money(estTotal) + '</div></div>' +
+        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#8b9096">' + parsed.lines.length + ' parts parsed · est. total ' + fmt(estTotal) + '</div></div>' +
         '<div id="clearFile" style="color:#8b9096;cursor:pointer;font-size:18px">×</div></div>' +
       '<div style="border:1px solid #23272c;border-radius:11px;overflow:hidden;margin-bottom:20px">' +
         '<div style="display:grid;grid-template-columns:1fr 130px 46px 92px;gap:10px;padding:10px 14px;background:#0f1113;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076"><span>DESCRIPTION</span><span>PART NUMBER</span><span>QTY</span><span style="text-align:right">ESTIMATE</span></div>' +
@@ -223,12 +233,12 @@ document.addEventListener('DOMContentLoaded', function () {
   async function hunt() {
     const btn = $('huntBtn'); btn.style.pointerEvents = 'none'; btn.innerHTML = '<span class="spinner"></span> Creating hunt…';
     try {
-      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: 'AUD', sources: { oem: lsrc.oem, aftermarket: lsrc.aftermarket, salvage: lsrc.salvage }, lines: parsed.lines } });
+      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: $('lCur').value, sources: { oem: lsrc.oem, aftermarket: lsrc.aftermarket, salvage: lsrc.salvage }, lines: parsed.lines } });
       location.href = 'list.html?id=' + encodeURIComponent(project.id) + '&run=1';
     } catch (e) { $('listMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; btn.style.pointerEvents = 'auto'; btn.textContent = 'Hunt all ' + parsed.lines.length + ' parts →'; }
   }
 
-  /* ---------- dashboard ---------- */
+  /* dashboard */
   const isToday = (iso) => iso && (Date.now() - new Date(iso).getTime()) < 86400000;
   async function load() {
     try {
