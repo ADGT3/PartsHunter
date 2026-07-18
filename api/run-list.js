@@ -2,17 +2,19 @@ import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 
 /* Parts-list hunt engine. For every line, use Claude web_search to find real online sources +
- * prices (with product URL + kind). Prices are parsed robustly (handles European formats), all
- * money is converted to AUD via live FX, and product URLs are captured from the actual
- * web_search results and back-filled by seller domain. A URL is NOT required to keep a source. */
+ * prices (with product URL + kind). Prices parsed robustly (European formats), converted to AUD
+ * via live FX. Product URLs captured from the actual web_search results and back-filled by
+ * seller domain. A URL is NOT required to keep a source. Small chunks + parallelism + rate-limit
+ * retry maximise per-part coverage within the serverless time budget. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
 const MODEL = process.env.LIST_MODEL || process.env.SEARCH_MODEL || 'claude-sonnet-5';
-const CHUNK = Number(process.env.LIST_CHUNK || 5);
-const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 4);
-const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 250000);
+const CHUNK = Number(process.env.LIST_CHUNK || 3);
+const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 6);
+const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 260000);
 const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 5) };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function parseAmount(v) {
   if (typeof v === 'number') return isFinite(v) ? v : null;
@@ -78,16 +80,16 @@ async function findChunk(parts, wants) {
     : 'Include OEM/genuine, aftermarket and salvage/used sources.';
   const system = [
     'You find CURRENT online prices for specific car parts by part number.',
-    'For each part, use web_search to find real online sellers that list it for sale and read the EXACT displayed price.',
+    'For EACH part number given, run a web_search for that exact part number and read the EXACT displayed price from a seller that lists it.',
     'Return ONLY a JSON object mapping the exact part number to an array of sources.',
     'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": the product page URL if you have it (otherwise omit it), "kind": "oem"|"aftermarket"|"salvage"}.',
     'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Set "currency" to the currency actually shown; do not convert.',
     constraint,
-    'Include EVERY real seller you actually find with a listed price. A product URL is preferred but NOT required — never drop a real, priced source just because you are unsure of its exact URL. If nothing is found for a part, use an empty array.'
+    'Include EVERY real seller you actually find with a listed price. A product URL is preferred but NOT required. Big OEM catalogues (teile.com, eurospares, design911, oempartsonline, pelican) often list these — check them. If nothing is found for a part, use an empty array for that part number.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
-  let data = null;
+  let data = null, retries = 0;
   const searchUrls = [];
   const collect = (content) => {
     for (const b of content || []) {
@@ -97,16 +99,21 @@ async function findChunk(parts, wants) {
     }
   };
   try {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       const c = new AbortController(); const t = setTimeout(() => c.abort(), 90000);
-      const r = await fetch(ANTHROPIC, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VER },
-        body: JSON.stringify({ model: MODEL, max_tokens: 4000, system, messages, tools: [SEARCH_TOOL] }),
-        signal: c.signal
-      });
-      clearTimeout(t);
-      if (!r.ok) return {};
+      let r;
+      try {
+        r = await fetch(ANTHROPIC, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VER },
+          body: JSON.stringify({ model: MODEL, max_tokens: 4000, system, messages, tools: [SEARCH_TOOL] }),
+          signal: c.signal
+        });
+      } finally { clearTimeout(t); }
+      if (!r.ok) {
+        if ((r.status === 429 || r.status === 529 || r.status >= 500) && retries < 3) { retries++; await sleep(2000 * retries); continue; }
+        return {};
+      }
       data = await r.json();
       collect(data.content);
       if (data.stop_reason === 'pause_turn') { messages = messages.concat([{ role: 'assistant', content: data.content }]); continue; }
