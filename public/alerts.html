@@ -4,17 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper — Alerts</title>
-<link rel="icon" href="/assets/mark.png">
+<link rel="icon" href="/assets/mark.png?v=6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css?v=6">
-<script src="/assets/app.js?v=6" defer></script>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=8">
+<script src="/assets/app.js?v=8" defer></script>
 </head>
 <body>
 <header class="ps-header">
   <a class="ps-brand" href="/index.html">
-    <img src="/assets/logo.png" alt="Parts Sniper" onerror="this.style.display='none'">
+    <img src="/assets/logo.png?v=6" alt="Parts Sniper" onerror="this.style.display='none'">
     <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
   </a>
   <nav class="ps-nav">
@@ -27,77 +27,62 @@
   <div class="ps-avatar">PS</div>
 </header>
 
-<main class="ps-main">
-  <div class="eyebrow">// ACTIVITY FEED</div>
-  <h1 class="page">Alerts</h1>
-  <p class="lede">Everything your hunts flagged — new high-scoring matches, price drops on parts you're tracking, and listings that ended.</p>
-
-  <div id="wrap" style="margin-top:28px"><div class="muted">Loading activity…</div></div>
+<main class="ps-main" style="max-width:780px">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:#ff6a3d;margin-bottom:10px">// ACTIVITY FEED</div>
+  <h1 style="font-family:Archivo,sans-serif;font-weight:800;font-size:40px;margin:0 0 8px;letter-spacing:-.02em">Alerts</h1>
+  <p style="color:#9aa0a6;font-size:15px;max-width:560px;margin:0 0 28px;line-height:1.55">Everything your hunts flagged — new high-scoring matches, price drops on tracked parts, and listings that ended.</p>
+  <div id="feed" style="display:flex;flex-direction:column;gap:10px"><div class="muted">Loading activity…</div></div>
 </main>
 
-<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
+<footer style="border-top:1px solid #1a1d20;padding:22px 24px;text-align:center">
+  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4e5359;letter-spacing:.1em">PARTS SNIPER — PRECISION PART HUNTING</span>
+</footer>
 
 <script>
 document.addEventListener('DOMContentLoaded', async function () {
   PH.updateWatchCount();
-  const wrap = document.getElementById('wrap');
-
-  function esc(s) { return PH.esc(s); }
-  function item(type, icon, headHtml, meta, ts, url) { return { type, icon, headHtml, meta, ts: ts || Date.now(), url }; }
+  const feed = document.getElementById('feed');
+  const META = {
+    match: { icon: '◎', color: '#58c98a', bg: 'rgba(88,201,138,.13)', label: 'NEW MATCH' },
+    price: { icon: '▼', color: '#ff6a3d', bg: 'rgba(255,90,44,.13)', label: 'PRICE DROP' },
+    ended: { icon: '◇', color: '#8b9096', bg: 'rgba(139,144,150,.12)', label: 'ENDED' }
+  };
+  function rowHtml(a) {
+    const m = META[a.type] || META.ended;
+    const iconStyle = 'width:34px;height:34px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;color:' + m.color + ';background:' + m.bg + ';';
+    const badgeStyle = "font-family:'JetBrains Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;color:" + m.color + ';background:' + m.bg + ';';
+    const time = a.url ? '<a href="' + PH.esc(a.url) + '" target="_blank" rel="noopener" style="color:#6b7076">' + PH.ago(a.ts) + ' ↗</a>' : PH.ago(a.ts);
+    return '<div style="display:flex;align-items:flex-start;gap:14px;padding:16px 18px;background:#131518;border:1px solid #23272c;border-radius:13px">' +
+      '<div style="' + iconStyle + '">' + m.icon + '</div>' +
+      '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+        '<span style="' + badgeStyle + '">' + m.label + '</span>' +
+        '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#6b7076">' + PH.esc(a.project || '') + '</span></div>' +
+        '<div style="font-size:14px;color:#d7dbde;line-height:1.5">' + a.text + '</div></div>' +
+      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#6b7076;white-space:nowrap">' + time + '</span></div>';
+  }
 
   try {
     const watch = PH.watch.list();
-    const [feed, lookup] = await Promise.all([
+    const [data, lookup] = await Promise.all([
       PH.api('/api/alerts'),
       watch.length ? PH.api('/api/alerts', { method: 'POST', body: { urls: watch.map((w) => w.url) } }) : Promise.resolve({ current: {} })
     ]);
-
     const alerts = [];
-
-    // New matches across all hunts
-    (feed.newMatches || []).forEach((m) => {
-      alerts.push(item('new', '◎',
-        'New match: <b>' + esc(m.title) + '</b>',
-        esc(m.project_name) + '  ·  ' + esc(m.seller || 'source') + '  ·  ' + esc(PH.fmtPrice(m.price)),
-        m.created_at, m.url));
-    });
-
-    // Price drops / ended on tracked (watchlist) parts
-    const current = (lookup && lookup.current) || {};
+    (data.newMatches || []).forEach((m) => alerts.push({ type: 'match', project: m.project_name, text: 'New match: <b style="color:#e9ebed">' + PH.esc(m.title) + '</b> — ' + PH.esc(PH.fmtPrice(m.price)) + ' at ' + PH.esc(m.seller || 'source'), ts: m.created_at, url: m.url }));
+    const cur = (lookup && lookup.current) || {};
     watch.forEach((w) => {
-      const savedNum = PH.parsePrice(w.price);
-      const cur = current[w.url];
-      if (!cur || !cur.present) {
-        alerts.push(item('ended', '✕',
-          'Listing ended: <b>' + esc(w.title) + '</b>',
-          'tracked from ' + esc(w.projectName || 'a hunt') + ' — no longer in results',
-          w.savedAt, w.url));
-      } else if (savedNum != null && cur.price_num != null && Number(cur.price_num) < savedNum - 0.5) {
-        alerts.push(item('drop', '▼',
-          'Price drop: <b>' + esc(w.title) + '</b>',
-          PH.fmtPrice(w.price) + '  →  ' + PH.fmtPrice(String(cur.price_num)) + '  ·  ' + esc(w.seller || ''),
-          Date.now(), w.url));
-      }
+      const saved = PH.parsePrice(w.price), c = cur[w.url];
+      if (!c || !c.present) alerts.push({ type: 'ended', project: w.projectName || 'a hunt', text: 'Listing ended: <b style="color:#e9ebed">' + PH.esc(w.title) + '</b> is no longer in results', ts: w.savedAt, url: w.url });
+      else if (saved != null && c.price_num != null && Number(c.price_num) < saved - 0.5) alerts.push({ type: 'price', project: w.projectName || 'a hunt', text: 'Price drop: <b style="color:#e9ebed">' + PH.esc(w.title) + '</b> ' + PH.fmtPrice(w.price) + ' → ' + PH.fmtPrice(String(c.price_num)), ts: Date.now(), url: w.url });
     });
-
     alerts.sort((a, b) => new Date(b.ts) - new Date(a.ts));
-
     if (!alerts.length) {
-      wrap.innerHTML =
-        '<div class="empty"><div class="ic">◎</div><h3>No activity yet</h3>' +
-        '<p>Once your hunts run and you start tracking parts on your watchlist, new matches, price drops and ended listings show up here.</p>' +
-        '<a class="btn" href="/index.html">Go to projects</a></div>';
+      feed.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:70px 20px;border:1.5px dashed #2f343a;border-radius:16px;color:#6b7076"><div style="font-size:34px">◎</div><div style="font-size:15px;font-weight:600;color:#9aa0a6">No activity yet</div><div style="font-size:13.5px;text-align:center;max-width:360px;line-height:1.5">Once your hunts run and you track parts on your watchlist, new matches, price drops and ended listings show up here.</div></div>';
       return;
     }
-
-    wrap.innerHTML = '<div class="feed">' + alerts.map((a) =>
-      '<div class="alert ' + a.type + '">' +
-        '<div class="ai">' + a.icon + '</div>' +
-        '<div class="txt"><div class="h">' + a.headHtml + '</div><div class="m">' + a.meta + '</div></div>' +
-        '<div class="when">' + (a.url ? '<a href="' + esc(a.url) + '" target="_blank" rel="noopener">' + PH.ago(a.ts) + ' ↗</a>' : PH.ago(a.ts)) + '</div>' +
-      '</div>').join('') + '</div>';
+    feed.innerHTML = alerts.map(rowHtml).join('');
   } catch (e) {
-    wrap.innerHTML = '<div class="banner err">Could not load alerts: ' + PH.esc(e.message) + '</div>';
+    feed.innerHTML = '<div class="banner err">Could not load alerts: ' + PH.esc(e.message) + '</div>';
   }
 });
 </script>

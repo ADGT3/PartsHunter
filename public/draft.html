@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parts Sniper — Draft</title>
+<link rel="icon" href="/assets/mark.png?v=6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=8">
+<script src="/assets/app.js?v=8" defer></script>
+</head>
+<body>
+<header class="ps-header">
+  <a class="ps-brand" href="/index.html">
+    <img src="/assets/logo.png?v=6" alt="Parts Sniper" onerror="this.style.display='none'">
+    <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
+  </a>
+  <nav class="ps-nav">
+    <a href="/index.html">Projects</a>
+    <a href="/watchlist.html">Watchlist <span class="count" id="navSaved"></span></a>
+    <a href="/alerts.html">Alerts</a>
+  </nav>
+  <div class="ps-spacer"></div>
+  <button class="btn" onclick="location.href='/index.html'"><span class="plus">＋</span> New hunt</button>
+  <div class="ps-avatar">PS</div>
+</header>
+
+<main class="ps-main">
+  <div style="max-width:900px;margin:0 auto">
+    <div id="back" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#9aa0a6;cursor:pointer;margin-bottom:22px">&#8592; Back</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <span style="width:8px;height:8px;border-radius:50%;background:#ff5a2c;animation:ps-pulse 1.6s ease infinite"></span>
+      <span id="kicker" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#ff6a3d">// DRAFT READY — REVIEW &amp; RUN</span>
+    </div>
+    <h1 id="pName" style="font-family:Archivo,sans-serif;font-weight:800;font-size:32px;margin:0 0 30px;letter-spacing:-.02em">Loading…</h1>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start">
+      <div style="background:#131518;border:1px solid #23272c;border-radius:16px;padding:22px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="font-family:Archivo,sans-serif;font-weight:700;font-size:16px;margin:0">Search queries</h3>
+          <span id="qCount" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#6b7076"></span>
+        </div>
+        <div id="queries" style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px"></div>
+        <div style="display:flex;gap:8px">
+          <input id="newQuery" placeholder="Add another query…" style="flex:1;padding:10px 12px;background:#0f1113;border:1px solid #2a2e34;border-radius:8px;color:#e9ebed;font-size:13px;font-family:'JetBrains Mono',monospace">
+          <div id="addQuery" style="padding:10px 14px;border-radius:8px;border:1px solid #2a2e34;color:#e9ebed;font-weight:600;font-size:13px;cursor:pointer">Add</div>
+        </div>
+      </div>
+      <div style="background:#131518;border:1px solid #23272c;border-radius:16px;padding:22px">
+        <h3 style="font-family:Archivo,sans-serif;font-weight:700;font-size:16px;margin:0 0 16px">Matching rules</h3>
+        <div id="rules" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-top:24px;padding:20px 22px;background:linear-gradient(90deg,rgba(255,90,44,.09),rgba(255,90,44,.02));border:1px solid rgba(255,90,44,.2);border-radius:14px">
+      <div>
+        <div id="runReady" style="font-family:Archivo,sans-serif;font-weight:700;font-size:15px;margin-bottom:3px">Ready to run</div>
+        <div id="summary" style="font-size:13px;color:#9aa0a6"></div>
+      </div>
+      <div id="runBtn" style="display:flex;align-items:center;gap:9px;padding:13px 24px;border-radius:10px;background:#ff5a2c;color:#0d0e10;font-weight:700;font-size:15px;cursor:pointer">Run search &#8594;</div>
+    </div>
+    <div id="msg" style="margin-top:14px"></div>
+  </div>
+</main>
+
+<footer style="border-top:1px solid #1a1d20;padding:22px 24px;text-align:center">
+  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4e5359;letter-spacing:.1em">PARTS SNIPER — PRECISION PART HUNTING</span>
+</footer>
+
+<script>
+document.addEventListener('DOMContentLoaded', async function () {
+  PH.updateWatchCount();
+  const id = PH.qs('id'), isNew = PH.qs('new') === '1';
+  const $ = (i) => document.getElementById(i);
+  const COUNTRY = { all: 'worldwide', au: 'Australia', us: 'United States', gb: 'United Kingdom', ca: 'Canada', nz: 'New Zealand', de: 'Germany', jp: 'Japan', ae: 'UAE' };
+  let project = null, queries = [], rules = [], country = 'all';
+
+  $('kicker').textContent = isNew ? '// DRAFT READY — REVIEW & RUN' : '// EDIT SEARCH';
+  $('runReady').textContent = isNew ? 'Ready to run' : 'Ready to update';
+  $('runBtn').innerHTML = (isNew ? 'Run search' : 'Update & re-run') + ' &#8594;';
+  $('back').innerHTML = (isNew ? '&#8592; Edit target' : '&#8592; Back to results');
+  $('back').addEventListener('click', () => { location.href = isNew ? '/index.html' : ('project.html?id=' + encodeURIComponent(id)); });
+
+  function drawQueries() {
+    $('qCount').textContent = queries.length + ' generated';
+    $('queries').innerHTML = queries.map((q, i) =>
+      '<div style="display:flex;align-items:center;gap:10px;padding:11px 13px;background:#0f1113;border:1px solid #24282d;border-radius:9px">' +
+      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:12.5px;color:#d7dbde;flex:1;word-break:break-word">' + PH.esc(q) + '</span>' +
+      '<span class="qx" data-i="' + i + '" style="color:#6b7076;cursor:pointer;font-size:16px;line-height:1">×</span></div>'
+    ).join('');
+    $('queries').querySelectorAll('.qx').forEach((el) => el.addEventListener('click', () => { queries.splice(+el.dataset.i, 1); drawQueries(); summary(); }));
+  }
+  function drawRules() {
+    $('rules').innerHTML = rules.map((r, i) => {
+      const box = r.on ? 'background:#ff5a2c;color:#0d0e10;border:1px solid #ff5a2c;' : 'background:transparent;border:1px solid #3a4046;color:transparent;';
+      const txt = r.on ? 'color:#e9ebed;' : 'color:#6b7076;';
+      return '<div class="rrow" data-i="' + i + '" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#0f1113;border:1px solid #24282d;border-radius:10px;cursor:pointer">' +
+        '<div style="width:20px;height:20px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;' + box + '">' + (r.on ? '✓' : '') + '</div>' +
+        '<span style="font-size:14px;' + txt + '">' + PH.esc(r.label) + '</span></div>';
+    }).join('');
+    $('rules').querySelectorAll('.rrow').forEach((el) => el.addEventListener('click', () => { const i = +el.dataset.i; rules[i].on = !rules[i].on; drawRules(); summary(); }));
+  }
+  function summary() {
+    const active = rules.filter((r) => r.on).length;
+    $('summary').textContent = queries.length + ' queries · ' + active + ' rules · ' + (COUNTRY[country] || country);
+  }
+
+  $('addQuery').addEventListener('click', () => { const v = $('newQuery').value.trim(); if (v) { queries.push(v); $('newQuery').value = ''; drawQueries(); summary(); } });
+  $('newQuery').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addQuery').click(); });
+
+  $('runBtn').addEventListener('click', async () => {
+    const btn = $('runBtn'); btn.style.pointerEvents = 'none';
+    $('msg').innerHTML = '<div class="banner"><span class="spinner"></span> ' + (isNew ? 'Running the search' : 'Updating and re-running') + '… this can take a couple of minutes.</div>';
+    const config = Object.assign({}, project.config || {}, { queries, rules: rules.filter((r) => r.on).map((r) => r.label) });
+    try {
+      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
+      await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
+      location.href = 'project.html?id=' + encodeURIComponent(id);
+    } catch (e) { $('msg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; btn.style.pointerEvents = 'auto'; }
+  });
+
+  try {
+    const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
+    project = data.project;
+    const c = project.config || {};
+    $('pName').textContent = project.name;
+    queries = (c.queries || []).slice();
+    rules = (c.rules || []).map((r) => ({ label: r, on: true }));
+    country = (c.filters && c.filters.country) || 'all';
+    drawQueries(); drawRules(); summary();
+  } catch (e) { $('pName').textContent = 'Could not load draft'; $('msg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
+});
+</script>
+</body>
+</html>
