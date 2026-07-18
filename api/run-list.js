@@ -1,11 +1,10 @@
 import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 
-/* Parts-list hunt engine.
- * POST { projectId } -> for every line, use Claude web_search to find real online sources +
- * prices (with product URL + kind), respecting the project's selected Sources, convert to AUD
- * via live FX, pick the cheapest, compute savings + totals. Product URLs are captured from the
- * actual web_search results and back-filled onto each source by seller domain. */
+/* Parts-list hunt engine. For every line, use Claude web_search to find real online sources +
+ * prices (with product URL + kind). Prices are parsed robustly (handles European formats like
+ * "3.568,70"), all money is converted to AUD via live FX, product URLs are captured from the
+ * actual web_search results and back-filled by seller domain. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -15,6 +14,26 @@ const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 4);
 const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 250000);
 const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 4) };
 
+// Robust numeric parse: handles "3.568,70" (EU), "3,568.70" (US), "3568.70", "R 12 745,01".
+function parseAmount(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  let s = String(v == null ? '' : v).replace(/[^0-9.,]/g, '');
+  if (!s) return null;
+  const lc = s.lastIndexOf(','), ld = s.lastIndexOf('.');
+  if (lc > -1 && ld > -1) {
+    if (lc > ld) s = s.replace(/\./g, '').replace(',', '.');   // European: 3.568,70
+    else s = s.replace(/,/g, '');                              // US: 3,568.70
+  } else if (lc > -1) {
+    const after = s.length - lc - 1;
+    s = (after === 1 || after === 2) ? s.replace(',', '.') : s.replace(/,/g, '');
+  } else if (ld > -1) {
+    const after = s.length - ld - 1;
+    if (after === 3) s = s.replace(/\./g, '');                 // 3.568 -> 3568 (thousands)
+  }
+  const n = parseFloat(s);
+  return isFinite(n) ? n : null;
+}
+
 async function fxToAud() {
   let rates = { AUD: 1, USD: 0.66, EUR: 0.61, GBP: 0.52, ZAR: 12, NZD: 1.09, JPY: 100, CAD: 0.9, AED: 2.4 };
   try {
@@ -23,7 +42,7 @@ async function fxToAud() {
     clearTimeout(t);
     if (r.ok) { const d = await r.json(); if (d && d.rates && d.rates.USD) rates = d.rates; }
   } catch (e) { /* keep fallback */ }
-  const alias = { R: 'ZAR', 'R$': 'BRL', '£': 'GBP', '€': 'EUR', $: 'USD', 'US$': 'USD', 'A$': 'AUD', 'AU$': 'AUD', '¥': 'JPY' };
+  const alias = { R: 'ZAR', 'R$': 'BRL', '£': 'GBP', '€': 'EUR', $: 'USD', 'US$': 'USD', 'A$': 'AUD', 'AU$': 'AUD', '¥': 'JPY', EURO: 'EUR', RAND: 'ZAR' };
   return function (price, cur) {
     if (price == null || isNaN(price)) return null;
     let c = String(cur || 'AUD').trim().toUpperCase();
@@ -44,12 +63,11 @@ function normKind(k) {
 
 const alnum = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 function hostToken(u) { try { return alnum(new URL(u).hostname.replace(/^www\./, '')); } catch (e) { return ''; } }
-// Best URL from the search results whose domain matches the seller label.
 function matchUrl(label, urls) {
-  const sk = alnum(String(label || '').split(/[·|\-–—]|\s{2,}| /)[0]); // "Teile.com · Germany" -> "teilecom"
+  const sk = alnum(String(label || '').split(/[·|\-–—]|\s{2,}| /)[0]);
   if (sk.length < 3) return null;
   const cand = urls.filter((u) => { const h = hostToken(u); return h && (h.includes(sk) || sk.includes(h)); });
-  cand.sort((a, b) => b.length - a.length); // deepest path first (likely the product page)
+  cand.sort((a, b) => b.length - a.length);
   return cand[0] || null;
 }
 
@@ -61,11 +79,12 @@ async function findChunk(parts, wants) {
     : 'Include OEM/genuine, aftermarket and salvage/used sources.';
   const system = [
     'You find CURRENT online prices for specific car parts by part number.',
-    'For each part you are given, use web_search to find real online sellers that list it for sale and read the price.',
+    'For each part, use web_search to find real online sellers that list it for sale and read the EXACT displayed price.',
     'Return ONLY a JSON object mapping the exact part number to an array of sources.',
-    'Each source: {"label": seller name, "location": country or region or "", "price": number, "currency": ISO code, "url": the EXACT product/listing page URL you found (copy it verbatim from the search results — the deep link to that specific part, not a homepage or search page), "kind": "oem" | "aftermarket" | "salvage"}.',
+    'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": exact product page URL copied verbatim from the results, "kind": "oem"|"aftermarket"|"salvage"}.',
+    'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Always set "currency" to the currency actually shown (EUR, USD, GBP, ZAR, AUD, ...). Do not guess or convert; report the number and currency exactly as displayed.',
     constraint,
-    'Include ONLY real sellers you actually found with a listed price. The "url" must be the real product page URL from your search results. Price must be numeric (no symbols/commas). If nothing is found for a part, use an empty array.'
+    'Include ONLY real sellers with a listed price and a real product URL. If nothing is found for a part, use an empty array.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
@@ -103,7 +122,6 @@ async function findChunk(parts, wants) {
     const parsed = JSON.parse(s.slice(0, e + 1));
     if (parsed && typeof parsed === 'object') obj = parsed;
   } catch (e) { return {}; }
-  // back-fill missing/weak URLs from the actual search results by seller domain
   for (const pn of Object.keys(obj)) {
     if (!Array.isArray(obj[pn])) continue;
     for (const src of obj[pn]) {
@@ -128,6 +146,7 @@ export default async function handler(req, res) {
     const parts = cfg.partsList || [];
     if (!parts.length) return res.status(400).json({ error: 'This project has no parts list.' });
 
+    const estCur = cfg.currency || 'AUD';
     const f = cfg.filters || {};
     const wants = []; if (f.oem) wants.push('oem'); if (f.aftermarket) wants.push('aftermarket'); if (f.salvage) wants.push('salvage');
 
@@ -149,12 +168,15 @@ export default async function handler(req, res) {
 
     const results = parts.map((p) => {
       let raw = (found[p.pn] || [])
-        .map((s) => ({ label: s && s.label || '', location: s && s.location || '', url: (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null, kind: normKind(s && s.kind), priceAud: toAud(Number(s && s.price), s && s.currency) }))
+        .map((s) => ({ label: s && s.label || '', location: s && s.location || '', url: (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null, kind: normKind(s && s.kind), priceAud: toAud(parseAmount(s && s.price), s && s.currency) }))
         .filter((s) => s.priceAud != null && s.priceAud > 0);
       if (wants.length) raw = raw.filter((s) => wants.includes(s.kind));
       raw.sort((a, b) => a.priceAud - b.priceAud);
 
-      const est = (p.est == null || isNaN(Number(p.est))) ? null : Number(p.est);
+      const rawEst = parseAmount(p.est);
+      const estA = rawEst == null ? null : (toAud(rawEst, estCur) != null ? toAud(rawEst, estCur) : rawEst);
+      const est = estA == null ? null : Math.round(estA);
+
       let status = 'notfound', foundP = null, source = null, location = null, bestUrl = null, kind = null, saving = 0;
       if (raw.length) {
         foundP = Math.round(raw[0].priceAud); source = raw[0].label; location = raw[0].location; bestUrl = raw[0].url; kind = raw[0].kind;
@@ -168,7 +190,7 @@ export default async function handler(req, res) {
     const estTotal = Math.round(results.reduce((n, r) => n + (r.est || 0), 0));
     const foundTotal = Math.round(results.reduce((n, r) => n + (r.found != null ? r.found : (r.est || 0)), 0));
     const saveTotal = Math.round(results.reduce((n, r) => n + (r.saving || 0), 0));
-    const totals = { estTotal, foundTotal, saveTotal, currency: cfg.currency || 'AUD' };
+    const totals = { estTotal, foundTotal, saveTotal, currency: 'AUD' };
 
     const newCfg = Object.assign({}, cfg, { results, totals });
     await sql`UPDATE projects SET config = ${JSON.stringify(newCfg)}::jsonb, run_count = run_count + 1, last_run_at = now() WHERE id = ${projectId}`;
