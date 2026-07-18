@@ -29,7 +29,6 @@
 </header>
 
 <main class="ps-main">
-  <!-- ===== NEW HUNT ===== -->
   <section id="newHunt" style="display:none;max-width:680px;margin:0 auto">
     <div id="backProjects" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#9aa0a6;cursor:pointer;margin-bottom:22px">&#8592; Back to projects</div>
     <div style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.22em;color:#ff6a3d;margin-bottom:10px">// NEW HUNT</div>
@@ -48,7 +47,7 @@
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">WHAT ARE YOU HUNTING FOR?</label>
       <textarea id="pgoal" rows="4" placeholder="Genuine OEM front bumper cover for a 1988 BMW E30 M3, unpainted or in original Alpine White, no cracks or repairs, willing to ship internationally." style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:14.5px;line-height:1.55;resize:vertical;margin-bottom:22px"></textarea>
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES</label>
-      <div id="srcChips" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px"></div>
+      <div id="dSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px"></div>
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">COUNTRY</label>
       <select id="fCountry" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:24px">
         <option value="all">All countries</option><option value="au">Australia</option><option value="us">United States</option>
@@ -68,7 +67,10 @@
 
     <!-- upload -->
     <div id="tabUpload" style="display:none;background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px">
-      <div id="dropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:52px 20px;border:1.5px dashed #2f343a;border-radius:14px;cursor:pointer;color:#8b9096">
+      <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES TO HUNT</label>
+      <div id="lSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:8px"></div>
+      <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Leave all off to hunt every kind, or pick some — e.g. OEM only, or OEM + Aftermarket.</div>
+      <div id="dropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 20px;border:1.5px dashed #2f343a;border-radius:14px;cursor:pointer;color:#8b9096">
         <div style="width:52px;height:52px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:24px">⭱</div>
         <div style="font-size:15px;font-weight:600;color:#e9ebed">Drop an estimate or parts list here</div>
         <div style="font-size:13px;text-align:center;max-width:360px;line-height:1.5">Accepts .xlsx or .csv estimates. Sniper reads each line — description, part number, qty and estimate price — and hunts a cheaper source for every part.</div>
@@ -80,7 +82,6 @@
     </div>
   </section>
 
-  <!-- ===== PROJECTS ===== -->
   <section id="projects">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
       <div>
@@ -90,14 +91,12 @@
       </div>
       <button class="btn" id="newBtn"><span class="plus">＋</span> New hunt</button>
     </div>
-
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:26px 0 30px">
       <div class="stat"><div class="k">ACTIVE HUNTS</div><div class="v" id="sActive">–</div></div>
       <div class="stat"><div class="k">TOTAL MATCHES</div><div class="v" id="sMatches">–</div></div>
       <div class="stat"><div class="k">RUN TODAY</div><div class="v accent" id="sToday">–</div></div>
       <div class="stat"><div class="k">SEARCHES RUN</div><div class="v" id="sRuns">–</div></div>
     </div>
-
     <div id="grid" class="pgrid"><div class="muted" style="padding:20px 0">Loading projects…</div></div>
   </section>
 </main>
@@ -112,7 +111,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const $ = (i) => document.getElementById(i);
   const grid = $('grid'), projSec = $('projects'), newSec = $('newHunt');
   const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString('en-AU');
-  const src = { oem: false, aftermarket: false, salvage: false };
+  const dsrc = { oem: false, aftermarket: false, salvage: false };
+  const lsrc = { oem: false, aftermarket: false, salvage: false };
 
   function showNew(v) { newSec.style.display = v ? 'block' : 'none'; projSec.style.display = v ? 'none' : 'block'; if (v) $('pname').focus(); window.scrollTo(0, 0); }
   $('newBtn').addEventListener('click', () => showNew(true));
@@ -120,7 +120,6 @@ document.addEventListener('DOMContentLoaded', function () {
   $('cancelBtn').addEventListener('click', () => showNew(false));
   $('backProjects').addEventListener('click', () => showNew(false));
 
-  // tabs
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((x) => { const on = x === t; x.style.background = on ? '#1f2327' : 'transparent'; x.style.color = on ? '#e9ebed' : '#8b9096'; });
     const up = t.dataset.tab === 'upload';
@@ -128,40 +127,29 @@ document.addEventListener('DOMContentLoaded', function () {
     $('tabUpload').style.display = up ? 'block' : 'none';
   }));
 
-  // source chips
   const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
-  function drawSrc() {
-    $('srcChips').innerHTML = SRC.map(([k, label]) => {
-      const on = src[k];
+  function chips(container, state) {
+    $(container).innerHTML = SRC.map(([k, label]) => {
+      const on = state[k];
       const style = 'display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s;' +
         (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:#0f1113;border:1px solid #2a2e34;color:#8b9096;');
       const dot = 'width:8px;height:8px;border-radius:50%;background:' + (on ? '#ff5a2c' : '#3a4046') + ';';
-      return '<div class="src" data-k="' + k + '" style="' + style + '"><span style="' + dot + '"></span>' + label + '</div>';
+      return '<div class="chp" data-k="' + k + '" style="' + style + '"><span style="' + dot + '"></span>' + label + '</div>';
     }).join('');
-    $('srcChips').querySelectorAll('.src').forEach((el) => el.addEventListener('click', () => { src[el.dataset.k] = !src[el.dataset.k]; drawSrc(); }));
+    $(container).querySelectorAll('.chp').forEach((el) => el.addEventListener('click', () => { state[el.dataset.k] = !state[el.dataset.k]; chips(container, state); }));
   }
-  drawSrc();
+  chips('dSrc', dsrc); chips('lSrc', lsrc);
 
-  // create button enable state
-  function refreshCreate() {
-    const can = $('pname').value.trim() && $('pgoal').value.trim();
-    const b = $('createBtn');
-    b.style.background = can ? '#ff5a2c' : '#26292e';
-    b.style.color = can ? '#0d0e10' : '#6b7076';
-    b.dataset.can = can ? '1' : '';
-  }
+  function refreshCreate() { const can = $('pname').value.trim() && $('pgoal').value.trim(); const b = $('createBtn'); b.style.background = can ? '#ff5a2c' : '#26292e'; b.style.color = can ? '#0d0e10' : '#6b7076'; b.dataset.can = can ? '1' : ''; }
   $('pname').addEventListener('input', refreshCreate);
   $('pgoal').addEventListener('input', refreshCreate);
-
   $('createBtn').addEventListener('click', async () => {
     if (!$('createBtn').dataset.can) return;
     const name = $('pname').value.trim(), goal = $('pgoal').value.trim();
-    const filters = { oem: src.oem, aftermarket: src.aftermarket, salvage: src.salvage, country: $('fCountry').value };
+    const filters = { oem: dsrc.oem, aftermarket: dsrc.aftermarket, salvage: dsrc.salvage, country: $('fCountry').value };
     $('createMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search…</div>';
-    try {
-      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters } });
-      location.href = 'draft.html?id=' + encodeURIComponent(project.id) + '&new=1';
-    } catch (e) { $('createMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
+    try { const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters } }); location.href = 'draft.html?id=' + encodeURIComponent(project.id) + '&new=1'; }
+    catch (e) { $('createMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
   });
 
   /* ---------- upload / parse ---------- */
@@ -235,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function () {
   async function hunt() {
     const btn = $('huntBtn'); btn.style.pointerEvents = 'none'; btn.innerHTML = '<span class="spinner"></span> Creating hunt…';
     try {
-      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: 'AUD', lines: parsed.lines } });
+      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: 'AUD', sources: { oem: lsrc.oem, aftermarket: lsrc.aftermarket, salvage: lsrc.salvage }, lines: parsed.lines } });
       location.href = 'list.html?id=' + encodeURIComponent(project.id) + '&run=1';
     } catch (e) { $('listMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; btn.style.pointerEvents = 'auto'; btn.textContent = 'Hunt all ' + parsed.lines.length + ' parts →'; }
   }
