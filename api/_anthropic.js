@@ -1,16 +1,12 @@
-/* Claude API helpers: expand a goal into a search config, and run an agentic
- * web search that can READ pages (not just search snippets).
- *
- * NO domain rules live here (no OEM/aftermarket/salvage opinions). All search
- * behaviour comes from the project's own goal, categories, queries, rules, and
- * the user's feedback. The system prompt below is purely mechanical. */
-
+/* Claude API helpers - Automatic browser fallback + improved image extraction */
 const API = 'https://api.anthropic.com/v1/messages';
 const VERSION = '2023-06-01';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const SEARCH_MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
 const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS || 280000);
 const MAX_STEPS = Number(process.env.SEARCH_MAX_STEPS || 14);
+const MAX_BROWSER_FETCHES = Number(process.env.MAX_BROWSER_FETCHES || 5);
+let browserBudget = MAX_BROWSER_FETCHES; // reset each run; caps slow headless renders
 const PAGE_CHARS = Number(process.env.FETCH_PAGE_CHARS || 12000);
 
 const WEB_SEARCH_TOOL = {
@@ -18,40 +14,182 @@ const WEB_SEARCH_TOOL = {
   name: 'web_search',
   max_uses: Number(process.env.SEARCH_MAX_USES || 10)
 };
+
 const FETCH_TOOL = {
   name: 'fetch_page',
-  description: 'Fetch the readable text of a web page so you can read what is actually on it. Search engines rarely index individual product/auction-lot pages, so use this to OPEN the category/listing pages that web_search returns (e.g. an auction site\'s "Porsche 911 2025" list) and read the individual items on them, and to open a specific product or lot page to confirm its details, price, availability and image. Returns the page text plus its OG_IMAGE url when present.',
+  description: 'Fast normal fetch. Use this first for most sites.',
   input_schema: {
     type: 'object',
-    properties: { url: { type: 'string', description: 'Full URL to fetch' } },
+    properties: { url: { type: 'string' } },
     required: ['url']
   }
 };
+
+const FETCH_BROWSER_TOOL = {
+  name: 'fetch_page_browser',
+  description: 'Use only when normal fetch returns very little content or for known JS-heavy sites.',
+  input_schema: {
+    type: 'object',
+    properties: { url: { type: 'string' } },
+    required: ['url']
+  }
+};
+
+function isPoorContent(text) {
+  if (!text || text.startsWith('FETCH ERROR') || text.startsWith('BROWSER')) return true;
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length < 800) return true;
+  if (/loading|please enable javascript|enable js|javascript is required/i.test(clean)) return true;
+  return false;
+}
+
+async function extractImage(html) {
+  let image = html.match(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+              html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)?.[1];
+
+  if (!image) {
+    const jsonLdMatch = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+    if (jsonLdMatch) {
+      try {
+        const json = JSON.parse(jsonLdMatch[1]);
+        if (json.image) image = Array.isArray(json.image) ? json.image[0] : json.image;
+        if (!image && json['@graph']) {
+          const product = json['@graph'].find(item => item['@type']?.includes('Product'));
+          if (product?.image) image = Array.isArray(product.image) ? product.image[0] : product.image;
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (!image) {
+    const imgMatches = html.match(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi) || [];
+    for (const img of imgMatches) {
+      const src = img.match(/src=["']([^"']+)["']/)?.[1];
+      if (src && !/logo|icon|sprite|placeholder|avatar|spinner/i.test(src) && src.length > 40) {
+        image = src;
+        break;
+      }
+    }
+  }
+
+  return image ? image.replace(/&amp;/g, '&') : '';
+}
+
+async function fetchPageText(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return 'FETCH ERROR: invalid url';
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 13000);
+    const r = await fetch(url, {
+      signal: c.signal,
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' }
+    });
+    clearTimeout(t);
+    if (!r.ok) return 'FETCH ERROR ' + r.status + ' for ' + url;
+
+    const html = await r.text();
+    const image = await extractImage(html);
+    const ogLine = image ? '\nOG_IMAGE: ' + image : '';
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return text.slice(0, PAGE_CHARS) + ogLine;
+  } catch (e) {
+    return 'FETCH ERROR: ' + String(e.message || e);
+  }
+}
+
+async function fetchPageWithBrowser(url) {
+  const key = process.env.BROWSERLESS_API_KEY;
+  if (!key) return 'BROWSERLESS_API_KEY not set';
+
+  try {
+    const response = await fetch(`https://chrome.browserless.io/content?token=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: url,
+        gotoOptions: { waitUntil: 'networkidle2', timeout: 30000 },
+        waitForTimeout: 5000,
+        bestAttempt: true
+      })
+    });
+
+    if (!response.ok) return 'BROWSER FETCH ERROR: ' + response.status;
+
+    const html = await response.text();
+    const image = await extractImage(html);
+    const ogLine = image ? '\nOG_IMAGE: ' + image : '';
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return text.slice(0, PAGE_CHARS) + ogLine;
+  } catch (e) {
+    return 'BROWSER FETCH ERROR: ' + e.message;
+  }
+}
+
+// Automatic fallback: normal first, then browser if poor
+async function smartFetch(url) {
+  const normal = await fetchPageText(url);
+  if (isPoorContent(normal)) {
+    if (browserBudget <= 0) return normal; // headless-render cap reached this run
+    browserBudget--;
+    console.log('Poor content from normal fetch, trying browser for:', url);
+    return await fetchPageWithBrowser(url);
+  }
+  return normal;
+}
+
+const MAX_RETRIES = Number(process.env.ANTHROPIC_MAX_RETRIES || 5);
 
 async function rawCall(body) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set on the server.');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RUN_TIMEOUT_MS);
-  let r;
   try {
-    r = await fetch(API, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VERSION },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-  } catch (e) {
-    if (e && e.name === 'AbortError') throw new Error('The search ran past the ' + Math.round(RUN_TIMEOUT_MS / 1000) + 's limit and was stopped. Lower SEARCH_MAX_STEPS/SEARCH_MAX_USES.');
-    throw e;
+    for (let attempt = 0; ; attempt++) {
+      let r;
+      try {
+        r = await fetch(API, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': VERSION
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        });
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw new Error('Search timed out.');
+        throw e;
+      }
+      if (r.ok) return await r.json();
+
+      const errText = await r.text();
+      // 429 = rate limited, 529 = overloaded, 5xx = transient server errors — back off and retry.
+      const retryable = r.status === 429 || r.status === 529 || (r.status >= 500 && r.status < 600);
+      if (retryable && attempt < MAX_RETRIES) {
+        const wait = Math.min(1500 * Math.pow(2, attempt), 20000);
+        console.warn(`Anthropic ${r.status} (attempt ${attempt + 1}/${MAX_RETRIES + 1}) — retrying in ${wait}ms`);
+        await new Promise((res) => setTimeout(res, wait));
+        continue;
+      }
+      throw new Error('Anthropic API ' + r.status + ': ' + errText.slice(0, 600));
+    }
   } finally {
     clearTimeout(timer);
   }
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error('Anthropic API ' + r.status + ': ' + t.slice(0, 600));
-  }
-  return await r.json();
 }
 
 function textOf(data) {
@@ -62,65 +200,50 @@ async function call(body) {
   return textOf(await rawCall(body));
 }
 
-// Fetch a page and return readable text + its og:image (for the fetch_page tool).
-async function fetchPageText(url) {
-  if (!url || !/^https?:\/\//i.test(url)) return 'FETCH ERROR: invalid url';
-  try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 13000);
-    const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
-    clearTimeout(t);
-    if (!r.ok) return 'FETCH ERROR ' + r.status + ' for ' + url;
-    const html = await r.text();
-    const og = html.match(/<meta[^>]+property=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i);
-    const ogLine = og ? '\nOG_IMAGE: ' + og[1].replace(/&amp;/g, '&') : '';
-    const text = html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return text.slice(0, PAGE_CHARS) + ogLine;
-  } catch (e) {
-    return 'FETCH ERROR: ' + String((e && e.message) || e);
-  }
-}
-
-// Agentic loop: drives web_search (server tool, may `pause_turn`) and the
-// fetch_page client tool. Always fulfils every client tool call, and if the
-// research budget is exhausted, forces a final answer with tools disabled so we
-// never return an unfinished (text-less) turn.
 async function agentLoop(body) {
   let messages = body.messages.slice();
   let data;
+
   for (let i = 0; i < MAX_STEPS; i++) {
     data = await rawCall({ ...body, messages });
     const stop = data.stop_reason;
+
     if (stop === 'pause_turn') {
       messages = messages.concat([{ role: 'assistant', content: data.content }]);
       continue;
     }
+
     if (stop === 'tool_use') {
       messages = messages.concat([{ role: 'assistant', content: data.content }]);
       const results = [];
+
       for (const b of data.content || []) {
         if (b.type === 'tool_use') {
-          const out = b.name === 'fetch_page' ? await fetchPageText(b.input && b.input.url) : ('Unsupported tool: ' + b.name);
+          let out;
+          if (b.name === 'fetch_page' || b.name === 'fetch_page_browser') {
+            // Use smartFetch which does automatic fallback
+            out = await smartFetch(b.input?.url || '');
+          } else {
+            out = 'Unsupported tool: ' + b.name;
+          }
           results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
         }
       }
-      messages = messages.concat([{ role: 'user', content: results.length ? results : 'Now output the final JSON array.' }]);
+
+      messages = messages.concat([{
+        role: 'user',
+        content: results.length ? results : 'Now output the final JSON array of listings.'
+      }]);
       continue;
     }
-    if (textOf(data)) return data; // got a final text answer
+
+    if (textOf(data)) return data;
     messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now.' }]);
   }
-  // Budget exhausted: force a final compile with tools forbidden.
+
   const finalMessages = messages.concat([{
     role: 'user',
-    content: 'Stop researching now. Using everything you have gathered, output ONLY the final JSON array of listings — do not call any tools, no prose.'
+    content: 'Stop researching now. Output ONLY the final JSON array of listings. No prose.'
   }]);
   return await rawCall({ ...body, messages: finalMessages, tool_choice: { type: 'none' } });
 }
@@ -129,28 +252,36 @@ function extractJson(text) {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   let s = (fence ? fence[1] : text);
   const start = s.search(/[[{]/);
-  if (start === -1) throw new Error('Model did not return JSON. Raw start: ' + text.slice(0, 300));
+  if (start === -1) throw new Error('Model did not return JSON. Start: ' + text.slice(0, 200));
   s = s.slice(start).replace(/[\x00-\x1F]+/g, ' ').trim();
-  const candidates = [];
+
+  const candidates = [s];
+  // Slice to the last closing bracket.
   const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
-  if (end !== -1) candidates.push(s.slice(0, end + 1));
-  // Truncation repair: keep up to the last COMPLETE object and re-close the array.
+  if (end > 0) candidates.push(s.slice(0, end + 1));
+  // Truncation repair: if it's an array cut off mid-object, keep up to the last
+  // COMPLETE object, drop any trailing comma, and re-close the array.
   if (s[0] === '[') {
     const lastObj = s.lastIndexOf('}');
-    if (lastObj !== -1) candidates.push(s.slice(0, lastObj + 1).replace(/,\s*$/, '') + ']');
+    if (lastObj > 0) candidates.push(s.slice(0, lastObj + 1).replace(/,\s*$/, '') + ']');
   }
-  candidates.push(s);
   for (const c of candidates) {
     try { return JSON.parse(c); } catch (e) { /* try next */ }
   }
-  throw new Error('Could not parse model JSON (likely truncated). Start: ' + s.slice(0, 200));
+  throw new Error('Could not parse model JSON. Start: ' + s.slice(0, 200));
 }
 
 export async function expandGoal(goal) {
-  const system = 'You configure a search. Given a plain-language goal, output a JSON object with exactly these keys: "categories" (array of 2-5 short section names to group results), "queries" (array of 6-10 web-search query strings using varied phrasing that would find matches for this goal), and "rules" (array of short guardrail strings capturing only the constraints the goal actually implies — do not invent unrelated constraints). Respond with ONLY the JSON object, no prose.';
+  const system = `You configure a parts search for repairing a damaged car.
+Given a plain-language goal, output a JSON object with exactly these keys:
+- "categories": array of 3-6 short section names to group results
+- "queries": array of 8-12 strong web search queries (include OEM part numbers if possible, salvage, Copart, IAAI, etc.)
+- "rules": array of short guardrail strings (only constraints implied by the goal)
+
+Respond with ONLY the JSON object, no prose.`;
   const text = await call({
     model: MODEL,
-    max_tokens: 1200,
+    max_tokens: 1500,
     system,
     messages: [{ role: 'user', content: 'Goal: ' + goal }]
   });
@@ -158,39 +289,57 @@ export async function expandGoal(goal) {
 }
 
 export async function runSearch(project, feedback) {
+  browserBudget = MAX_BROWSER_FETCHES;
   const cfg = project.config || {};
   const good = (feedback || []).filter((f) => f.vote > 0).slice(0, 25);
   const bad = (feedback || []).filter((f) => f.vote < 0).slice(0, 25);
 
-  const system = [
-    'You are a thorough research agent that finds items currently for sale on the web and returns them as structured data.',
-    'You have two tools: web_search (find pages) and fetch_page (open and READ a page). Search engines do not index most individual product or auction-lot pages, so DO NOT rely on search snippets alone: use web_search to find relevant CATEGORY/LISTING pages, then use fetch_page to open those pages and read the individual items on them, and follow links to specific product/lot pages to confirm details and get the image. Iterate — search, open, read, dig deeper — until you have genuinely satisfied the goal. Call ONE tool at a time and wait for its result before the next. Be efficient: you have a limited research budget, so after enough searching and reading, compile and output your results.',
-    'The user provides a GOAL, CATEGORIES, SEARCH QUERIES, and RULES. The RULES are authoritative: follow them exactly and add nothing of your own beyond them.',
-    'Never fabricate listings, prices, or images. Each result must link to its own product/lot page in "url". Set "section" to one of the project categories. For "image", use the page OG_IMAGE / og:image when present, else an empty string.',
-    'When finished, output ONLY a JSON array (start "[", end "]"), no prose, no markdown fences, and no raw line breaks inside string values. Keep each "description" to one short sentence so the JSON is not truncated. Each element: {"section","title","description","price","currency","condition","seller","url","image","badges"} where "badges" is an array of short tags.'
-  ].join(' ');
+  // If config is empty, expand on the fly
+  let categories = cfg.categories || [];
+  let queries = cfg.queries || [];
+  let rules = cfg.rules || [];
 
-  const parts = [];
-  parts.push('PROJECT GOAL: ' + project.goal);
-  parts.push('CATEGORIES: ' + (cfg.categories || []).join(' | '));
-  parts.push('SEARCH QUERIES (starting points — also search and browse further as needed):\n- ' + (cfg.queries || []).join('\n- '));
-  parts.push('RULES (authoritative — follow exactly, add nothing of your own):\n- ' + (cfg.rules || []).join('\n- '));
-  if (good.length) parts.push('USER MARKED GOOD — re-include these exact listings if still available, and prioritise similar matches:\n- ' + good.map((f) => (f.listing_title || '(listing)') + ' — ' + (f.seller || '') + ' — ' + f.listing_url).join('\n- '));
-  if (bad.length) parts.push('USER MARKED POOR — avoid these and anything similar:\n- ' + bad.map((f) => f.listing_title + ' — ' + f.seller + (f.reason ? ' (' + f.reason + ')' : '')).join('\n- '));
-  parts.push('Do the research now, then return ONLY the JSON array of current listings.');
+  if (queries.length === 0) {
+    try {
+      const expanded = await expandGoal(project.goal);
+      categories = expanded.categories || categories;
+      queries = expanded.queries || queries;
+      rules = expanded.rules || rules;
+    } catch (e) {
+      console.error('On-the-fly expand failed:', e.message);
+    }
+  }
+
+  const system = `You are Parts Sniper — expert at finding real OEM and salvage parts for damaged cars.
+
+Tool rules:
+- Prefer normal fetch_page first.
+- The system will automatically upgrade to browser when the page is JavaScript-heavy.
+- Focus hard on salvage/auction sources (Copart, IAAI, etc.) when relevant to the goal.
+- Extract accurate price, condition, seller, and image for every listing.
+- Every listing's "section" MUST be EXACTLY one of the CATEGORIES provided below (copy the category text verbatim). Do not invent new section names; if a listing does not neatly fit, choose the closest category.
+- Output ONLY a JSON array of listings. Never fabricate.`;
+
+  const parts = [
+    'PROJECT GOAL: ' + project.goal,
+    'CATEGORIES: ' + categories.join(' | '),
+    'SEARCH QUERIES:\n- ' + queries.join('\n- '),
+    'RULES:\n- ' + rules.join('\n- '),
+    good.length ? 'GOOD EXAMPLES (find similar):\n- ' + good.map(f => f.listing_url).join('\n- ') : '',
+    bad.length ? 'AVOID similar to:\n- ' + bad.map(f => f.listing_url).join('\n- ') : '',
+    'Do deep research now. Prioritise real current listings and salvage vehicles when relevant. Return ONLY the JSON array.'
+  ].filter(Boolean).join('\n\n');
 
   const data = await agentLoop({
     model: SEARCH_MODEL,
-    max_tokens: 12000,
+    max_tokens: 16000,
     system,
-    messages: [{ role: 'user', content: parts.join('\n\n') }],
-    tools: [WEB_SEARCH_TOOL, FETCH_TOOL]
+    messages: [{ role: 'user', content: parts }],
+    tools: [WEB_SEARCH_TOOL, FETCH_TOOL, FETCH_BROWSER_TOOL]
   });
+
   const text = textOf(data);
-  if (!text) {
-    const types = ((data && data.content) || []).map((b) => b.type).join(',') || 'none';
-    throw new Error('Search returned no text (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + types + ').');
-  }
+  if (!text) throw new Error('Search returned no text');
   const arr = extractJson(text);
   if (!Array.isArray(arr)) throw new Error('Search did not return a JSON array.');
   return arr;

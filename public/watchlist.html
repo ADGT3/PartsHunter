@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parts Sniper — Watchlist</title>
+<link rel="icon" href="/assets/mark.png?v=6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css?v=7">
+<script src="/assets/app.js?v=7" defer></script>
+</head>
+<body>
+<header class="ps-header">
+  <a class="ps-brand" href="/index.html">
+    <img src="/assets/logo.png?v=6" alt="Parts Sniper" onerror="this.style.display='none'">
+    <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
+  </a>
+  <nav class="ps-nav">
+    <a href="/index.html">Projects</a>
+    <a href="/watchlist.html" class="active">Watchlist <span class="count" id="navSaved"></span></a>
+    <a href="/alerts.html">Alerts</a>
+  </nav>
+  <div class="ps-spacer"></div>
+  <button class="btn" onclick="location.href='/index.html'"><span class="plus">＋</span> New hunt</button>
+  <div class="ps-avatar">PS</div>
+</header>
+
+<main class="ps-main">
+  <div class="eyebrow">// SAVED PARTS</div>
+  <h1 class="page">Watchlist</h1>
+  <p class="lede">Parts you've starred from any hunt. Open a hunt's results and tap the ☆ on any listing to keep it here.</p>
+
+  <div id="wrap" style="margin-top:28px"></div>
+</main>
+
+<div class="ps-foot">PARTS SNIPER — PRECISION PART HUNTING</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const imgUrl = function (u) { if (!u) return ''; u = String(u).trim(); return u.slice(0,2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
+  PH.updateWatchCount();
+  const wrap = document.getElementById('wrap');
+
+  function render() {
+    const items = PH.watch.list();
+    if (!items.length) {
+      wrap.innerHTML =
+        '<div class="empty"><div class="ic">☆</div>' +
+        '<h3>No saved parts yet</h3>' +
+        '<p>Open a hunt\'s results and tap the ☆ on any listing to track it here.</p>' +
+        '<a class="btn" href="/index.html">Go to projects</a></div>';
+      return;
+    }
+    let html = '<div class="grid">';
+    items.forEach((l) => {
+      const isrc = imgUrl(l.image);
+      const img = isrc ? '<img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.remove()">' : '<span class="ph">NO IMAGE</span>';
+      html += '<div class="card" data-url="' + PH.esc(l.url) + '">' +
+        '<div class="thumb' + (l.image ? '' : ' noimg') + '">' + img +
+          '<div class="vote"><button class="save on" title="Remove from watchlist">★</button></div></div>' +
+        '<div class="body">' +
+          '<div class="ptitle">' + PH.esc(l.title) + '</div>' +
+          (l.projectName ? '<div class="desc">from ' + PH.esc(l.projectName) + '</div>' : '') +
+          '<div class="foot"><div><div class="price">' + PH.esc(PH.fmtPrice(l.price)) + '</div><div class="src">' + PH.esc(l.seller || '') + '</div></div>' +
+          '<div class="foot-actions"><a class="view" href="' + PH.esc(l.url) + '" target="_blank" rel="noopener">View &#8599;</a></div></div>' +
+        '</div></div>';
+    });
+    html += '</div>';
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('.card').forEach((card) => {
+      card.querySelector('.save').addEventListener('click', () => {
+        PH.watch.remove(card.dataset.url);
+        PH.updateWatchCount();
+        PH.toast('Removed from watchlist');
+        render();
+      });
+    });
+  }
+  render();
+});
+</script>
+</body>
+</html>
