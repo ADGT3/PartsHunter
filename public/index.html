@@ -70,14 +70,14 @@
       <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Leave all off to hunt every kind, or pick some — e.g. OEM only, or OEM + Aftermarket.</div>
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">ESTIMATE CURRENCY</label>
       <select id="lCur" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:8px">
-        <option value="AUD">AUD — Australian dollar</option>
-        <option value="ZAR">ZAR — South African rand</option>
+        <option value="AUD">AUD — Australian dollar (default)</option>
         <option value="USD">USD — US dollar</option>
         <option value="EUR">EUR — Euro</option>
         <option value="GBP">GBP — British pound</option>
+        <option value="ZAR">ZAR — South African rand</option>
         <option value="NZD">NZD — New Zealand dollar</option>
       </select>
-      <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">The currency the prices in your estimate are in — everything is converted to AUD for the comparison.</div>
+      <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Your estimate is treated as AUD unless you pick another currency here — everything is converted to AUD for the comparison.</div>
       <div id="dropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 20px;border:1.5px dashed #2f343a;border-radius:14px;cursor:pointer;color:#8b9096">
         <div style="width:52px;height:52px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:24px">⭱</div>
         <div style="font-size:15px;font-weight:600;color:#e9ebed">Drop an estimate or parts list here</div>
@@ -184,6 +184,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const r = rows[i] || [];
       const desc = String(r[col.desc] == null ? '' : r[col.desc]).trim(), pn = String(r[col.pn] == null ? '' : r[col.pn]).trim();
       if (!desc && !pn) continue;
+      if (!pn && /\btotals?\b|sub-?total|grand total|subtotal/i.test(desc)) continue; // skip estimate summary rows
       out.push({ desc, pn, qty: col.qty >= 0 ? num(r[col.qty]) : null, est: col.est >= 0 ? num(r[col.est]) : null });
     }
     return out;
