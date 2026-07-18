@@ -4,38 +4,66 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Parts Sniper</title>
-<link rel="icon" href="/assets/mark.png">
+<link rel="icon" href="/assets/mark.png?v=6">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/app.css?v=6">
-<script src="/assets/app.js?v=6" defer></script>
+<link rel="stylesheet" href="/assets/app.css?v=8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="/assets/app.js?v=8" defer></script>
+<style>
+  .tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel-2); margin-bottom: 22px; width: fit-content; }
+  .tab { font-size: 13.5px; padding: 8px 16px; border-radius: 7px; color: var(--muted); cursor: pointer; }
+  .tab.on { background: var(--accent-2); color: var(--bg); font-weight: 700; }
+  .drop { border: 1.5px dashed var(--line-3); border-radius: 14px; background: var(--panel-2); padding: 46px 24px; text-align: center; cursor: pointer; transition: border-color .15s; }
+  .drop:hover, .drop.hot { border-color: var(--accent-2); }
+  .drop .ic { font-size: 34px; color: var(--accent); }
+  .drop h4 { font-family: var(--head); font-weight: 700; font-size: 17px; margin: 12px 0 6px; color: var(--text); }
+  .drop p { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
+  .pv-strip { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; border: 1px solid #2e6a45; background: #12201a; border-radius: 10px; margin-bottom: 16px; }
+  .pv-strip .l { font-size: 14px; color: #cdeadb; }
+  .pv-strip .l b { color: #58c98a; }
+  .pv-strip .x { cursor: pointer; color: var(--dim); font-size: 18px; }
+  .pv-table { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .pv-head, .pv-row { display: grid; grid-template-columns: 1fr 150px 46px 100px; gap: 10px; padding: 9px 14px; align-items: center; }
+  .pv-head { background: var(--panel-2); font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; color: var(--dim); }
+  .pv-row { border-top: 1px solid var(--line); font-size: 13px; }
+  .pv-row .m { font-family: var(--mono); font-size: 12px; color: var(--soft); }
+  .pv-row .dim { color: var(--dim); }
+  .pv-scroll { max-height: 360px; overflow: auto; }
+</style>
 </head>
 <body>
 <header class="ps-header">
   <a class="ps-brand" href="/index.html">
-    <img src="/assets/logo.png" alt="Parts Sniper" onerror="this.style.display='none'">
+    <img src="/assets/logo.png?v=6" alt="Parts Sniper" onerror="this.style.display='none'">
     <span class="ps-wordmark">PARTS <span>SNIPER</span></span>
   </a>
   <nav class="ps-nav">
     <a href="/index.html" class="active">Projects</a>
     <a href="/watchlist.html">Watchlist <span class="count" id="navSaved"></span></a>
-    <a href="/alerts.html">Alerts <span id="navAlerts"></span></a>
+    <a href="/alerts.html">Alerts</a>
   </nav>
   <div class="ps-spacer"></div>
   <button class="btn" id="newBtnTop"><span class="plus">＋</span> New hunt</button>
-  <div class="ps-avatar" id="avatar">PS</div>
+  <div class="ps-avatar">PS</div>
 </header>
 
 <main class="ps-main">
   <!-- ===== NEW HUNT ===== -->
-  <section id="newHunt" class="ps-rise" style="display:none; max-width:720px">
+  <section id="newHunt" class="ps-rise" style="display:none; max-width:760px">
     <div class="crumb"><a href="#" id="backProjects">&#8592; Back to projects</a></div>
     <div class="eyebrow" style="margin-top:16px">// NEW HUNT</div>
     <h1 class="page">Set your target</h1>
-    <p class="lede">Describe what you're after in plain language. The sniper drafts the search queries and rules — you review before it runs.</p>
+    <p class="lede">Describe one part, or upload a whole estimate and let the sniper price every line.</p>
 
-    <div class="panel" style="margin-top:24px">
+    <div class="tabs" style="margin-top:22px">
+      <div class="tab on" data-tab="one">Describe a part</div>
+      <div class="tab" data-tab="list">Upload a parts list</div>
+    </div>
+
+    <!-- Tab: describe a part -->
+    <div class="panel" id="tabOne">
       <div class="field">
         <label for="pname">Project name</label>
         <input type="text" id="pname" placeholder="e.g. McLaren 720S — carbon seats">
@@ -73,6 +101,21 @@
       </div>
       <div id="createMsg" style="margin-top:14px"></div>
     </div>
+
+    <!-- Tab: upload a parts list -->
+    <div id="tabList" style="display:none">
+      <div id="dropWrap">
+        <div class="drop" id="drop">
+          <div class="ic">⭱</div>
+          <h4>Drop an estimate or parts list here</h4>
+          <p>.xlsx or .csv — columns Description, Part Number, Qty, Amount</p>
+          <button class="btn grey" id="browseBtn">Browse files</button>
+          <input type="file" id="fileInput" accept=".xlsx,.csv" style="display:none">
+        </div>
+      </div>
+      <div id="preview" style="display:none"></div>
+      <div id="listMsg" style="margin-top:14px"></div>
+    </div>
   </section>
 
   <!-- ===== PROJECTS ===== -->
@@ -81,7 +124,7 @@
       <div>
         <div class="eyebrow">// ACTIVE HUNTS</div>
         <h1 class="page">Projects</h1>
-        <p class="lede">Each project is its own search that learns from your feedback. Create one from a plain-language goal and let the sniper do the hunting.</p>
+        <p class="lede">Each project is its own search that learns from your feedback. Create one from a plain-language goal — or upload an estimate to price every line.</p>
       </div>
       <button class="btn" id="newBtn"><span class="plus">＋</span> New hunt</button>
     </div>
@@ -105,6 +148,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const projSec = document.getElementById('projects');
   const newSec = document.getElementById('newHunt');
   PH.updateWatchCount();
+  const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString('en-AU');
 
   function showNew(v) {
     newSec.style.display = v ? 'block' : 'none';
@@ -117,34 +161,139 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('cancelBtn').addEventListener('click', () => showNew(false));
   document.getElementById('backProjects').addEventListener('click', (e) => { e.preventDefault(); showNew(false); });
 
-  // keep the Source checkbox chips highlighted when ticked
+  // tab toggle
+  document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === t));
+    const list = t.dataset.tab === 'list';
+    document.getElementById('tabOne').style.display = list ? 'none' : 'block';
+    document.getElementById('tabList').style.display = list ? 'block' : 'none';
+  }));
+
   document.querySelectorAll('.check input').forEach((cb) => {
     const sync = () => cb.closest('.check').classList.toggle('on', cb.checked);
     cb.addEventListener('change', sync); sync();
   });
+  const readFilters = () => ({
+    oem: document.getElementById('fOem').checked,
+    aftermarket: document.getElementById('fAft').checked,
+    salvage: document.getElementById('fSalv').checked,
+    country: document.getElementById('fCountry').value
+  });
 
-  function readFilters() {
-    return {
-      oem: document.getElementById('fOem').checked,
-      aftermarket: document.getElementById('fAft').checked,
-      salvage: document.getElementById('fSalv').checked,
-      country: document.getElementById('fCountry').value
+  /* ---------- describe-a-part create ---------- */
+  document.getElementById('createBtn').addEventListener('click', async () => {
+    const name = document.getElementById('pname').value.trim();
+    const goal = document.getElementById('pgoal').value.trim();
+    const msg = document.getElementById('createMsg');
+    if (!name || !goal) { msg.innerHTML = '<div class="banner err">Name and goal are both required.</div>'; return; }
+    msg.innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search with AI…</div>';
+    try {
+      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters: readFilters() } });
+      location.href = 'project.html?id=' + encodeURIComponent(project.id);
+    } catch (e) { msg.innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
+  });
+
+  /* ---------- upload a parts list ---------- */
+  let parsed = { name: '', lines: [] };
+  const fileInput = document.getElementById('fileInput');
+  document.getElementById('browseBtn').addEventListener('click', () => fileInput.click());
+  document.getElementById('drop').addEventListener('click', (e) => { if (e.target.id !== 'browseBtn') fileInput.click(); });
+  const drop = document.getElementById('drop');
+  ['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('hot'); }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('hot')));
+  drop.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]); });
+  fileInput.addEventListener('change', (e) => { if (e.target.files[0]) parseFile(e.target.files[0]); });
+
+  function num(v) { if (v == null || v === '') return null; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; }
+
+  function rowsToLines(rows) {
+    let hi = -1, col = {};
+    for (let i = 0; i < Math.min(rows.length, 12); i++) {
+      const r = (rows[i] || []).map((x) => String(x == null ? '' : x).toLowerCase().trim());
+      const d = r.findIndex((c) => c.includes('description'));
+      const pn = r.findIndex((c) => c.includes('part') && (c.includes('number') || c.includes('no') || c.includes('#')));
+      if (d !== -1 && pn !== -1) {
+        hi = i;
+        col = { desc: d, pn, qty: r.findIndex((c) => c === 'qty' || c.includes('quantity')), est: r.findIndex((c) => c.includes('amount') || c.includes('price') || c.includes('total')) };
+        break;
+      }
+    }
+    if (hi === -1) return [];
+    const out = [];
+    for (let i = hi + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const desc = String(r[col.desc] == null ? '' : r[col.desc]).trim();
+      const pn = String(r[col.pn] == null ? '' : r[col.pn]).trim();
+      if (!desc && !pn) continue;
+      out.push({ desc, pn, qty: col.qty >= 0 ? num(r[col.qty]) : null, est: col.est >= 0 ? num(r[col.est]) : null });
+    }
+    return out;
+  }
+
+  function parseFile(file) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext !== 'xlsx' && ext !== 'csv') { document.getElementById('listMsg').innerHTML = '<div class="banner err">Please upload a .xlsx or .csv file.</div>'; return; }
+    if (typeof XLSX === 'undefined') { document.getElementById('listMsg').innerHTML = '<div class="banner err">Spreadsheet reader still loading — try again in a second.</div>'; return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = ext === 'csv' ? XLSX.read(e.target.result, { type: 'string' }) : XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false });
+        const lines = rowsToLines(rows);
+        if (!lines.length) { document.getElementById('listMsg').innerHTML = '<div class="banner err">Couldn\'t find Description / Part Number columns in that file.</div>'; return; }
+        parsed = { name: file.name.replace(/\.(xlsx|csv)$/i, ''), lines };
+        showPreview(file.name);
+      } catch (err) { document.getElementById('listMsg').innerHTML = '<div class="banner err">Could not read that file: ' + PH.esc(err.message) + '</div>'; }
     };
+    if (ext === 'csv') reader.readAsText(file); else reader.readAsArrayBuffer(file);
   }
 
-  function ago(iso) {
-    if (!iso) return 'never run';
-    const d = (Date.now() - new Date(iso).getTime()) / 1000;
-    if (d < 3600) return Math.max(1, Math.round(d / 60)) + 'm ago';
-    if (d < 86400) return Math.round(d / 3600) + 'h ago';
-    return Math.round(d / 86400) + 'd ago';
+  function showPreview(filename) {
+    document.getElementById('listMsg').innerHTML = '';
+    document.getElementById('dropWrap').style.display = 'none';
+    const estTotal = parsed.lines.reduce((n, l) => n + (l.est || 0), 0);
+    const rowsHtml = parsed.lines.map((l) =>
+      '<div class="pv-row"><div>' + PH.esc(l.desc || '') + '</div>' +
+      '<div class="m">' + PH.esc(l.pn || '—') + '</div>' +
+      '<div class="m">' + (l.qty != null ? l.qty : '<span class="dim">—</span>') + '</div>' +
+      '<div class="m">' + (l.est != null ? money(l.est) : '<span class="dim">—</span>') + '</div></div>'
+    ).join('');
+    document.getElementById('preview').style.display = 'block';
+    document.getElementById('preview').innerHTML =
+      '<div class="pv-strip"><div class="l"><b>' + PH.esc(filename) + '</b> — ' + parsed.lines.length + ' parts parsed' + (estTotal ? ' · est. total ' + money(estTotal) : '') + '</div><div class="x" id="clearFile">&times;</div></div>' +
+      '<div class="pv-table"><div class="pv-head"><div>DESCRIPTION</div><div>PART NUMBER</div><div>QTY</div><div>ESTIMATE</div></div><div class="pv-scroll">' + rowsHtml + '</div></div>' +
+      '<button class="btn" id="huntBtn" style="width:100%;justify-content:center;margin-top:16px">Hunt all ' + parsed.lines.length + ' parts &#8594;</button>';
+    document.getElementById('clearFile').addEventListener('click', resetUpload);
+    document.getElementById('huntBtn').addEventListener('click', hunt);
   }
+
+  function resetUpload() {
+    parsed = { name: '', lines: [] };
+    fileInput.value = '';
+    document.getElementById('preview').style.display = 'none';
+    document.getElementById('preview').innerHTML = '';
+    document.getElementById('dropWrap').style.display = 'block';
+  }
+
+  async function hunt() {
+    const btn = document.getElementById('huntBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Creating hunt…';
+    try {
+      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: 'AUD', lines: parsed.lines } });
+      location.href = 'list.html?id=' + encodeURIComponent(project.id) + '&run=1';
+    } catch (e) {
+      document.getElementById('listMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>';
+      btn.disabled = false; btn.innerHTML = 'Hunt all ' + parsed.lines.length + ' parts &#8594;';
+    }
+  }
+
+  /* ---------- dashboard ---------- */
   const isToday = (iso) => iso && (Date.now() - new Date(iso).getTime()) < 86400000;
 
   async function load() {
     try {
       const { projects } = await PH.api('/api/projects');
-      // stats
       const matches = projects.reduce((n, p) => n + (p.listing_count || 0), 0);
       const runs = projects.reduce((n, p) => n + (p.run_count || 0), 0);
       const today = projects.filter((p) => isToday(p.last_run_at)).length;
@@ -155,21 +304,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
       grid.innerHTML = '';
       projects.forEach((p) => {
-        const cats = (p.config && p.config.categories) ? p.config.categories.slice(0, 3) : [];
+        const cfg = p.config || {};
+        const isList = cfg.kind === 'list';
         const active = isToday(p.last_run_at);
         const a = document.createElement('a');
         a.className = 'pcard';
-        a.href = 'project.html?id=' + encodeURIComponent(p.id);
-        a.innerHTML =
-          '<div class="pcard-top">' +
-            '<div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>' + (active ? 'ACTIVE' : 'IDLE') + '</div>' +
-            '<span class="pcard-when">' + ago(p.last_run_at) + '</span>' +
-          '</div>' +
-          '<h3>' + PH.esc(p.name) + '</h3>' +
-          '<p class="goal">' + PH.esc(p.goal || '') + '</p>' +
-          '<div class="tags">' + cats.map((c) => '<span class="tag">' + PH.esc(c) + '</span>').join('') + '</div>' +
-          '<div class="pcard-foot"><div><span class="n">' + (p.listing_count || 0) + '</span><span class="lbl">matches</span></div>' +
+        a.href = (isList ? 'list.html?id=' : 'project.html?id=') + encodeURIComponent(p.id);
+        if (isList) {
+          const nLines = (cfg.partsList || []).length;
+          const saved = cfg.totals ? money(cfg.totals.saveTotal) : null;
+          a.innerHTML =
+            '<div class="pcard-top"><div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>PARTS LIST</div>' +
+              '<span class="pcard-when">' + PH.ago(p.last_run_at) + '</span></div>' +
+            '<h3>' + PH.esc(p.name) + '</h3>' +
+            '<p class="goal">' + nLines + ' line items from an uploaded estimate.</p>' +
+            '<div class="tags"><span class="tag">ESTIMATE</span></div>' +
+            '<div class="pcard-foot"><div><span class="n">' + nLines + '</span><span class="lbl">lines</span></div>' +
+            (saved ? '<span class="new">save ' + saved + '</span>' : '') + '</div>';
+        } else {
+          const cats = (cfg.categories || []).slice(0, 3);
+          a.innerHTML =
+            '<div class="pcard-top"><div class="pcard-status"><span class="sdot' + (active ? '' : ' idle') + '"></span>' + (active ? 'ACTIVE' : 'IDLE') + '</div>' +
+              '<span class="pcard-when">' + PH.ago(p.last_run_at) + '</span></div>' +
+            '<h3>' + PH.esc(p.name) + '</h3>' +
+            '<p class="goal">' + PH.esc(p.goal || '') + '</p>' +
+            '<div class="tags">' + cats.map((c) => '<span class="tag">' + PH.esc(c) + '</span>').join('') + '</div>' +
+            '<div class="pcard-foot"><div><span class="n">' + (p.listing_count || 0) + '</span><span class="lbl">matches</span></div>' +
             (active ? '<span class="new">RECENT</span>' : '') + '</div>';
+        }
         grid.appendChild(a);
       });
       const nc = document.createElement('div');
@@ -181,20 +343,6 @@ document.addEventListener('DOMContentLoaded', function () {
       grid.innerHTML = '<div class="banner err">Could not load projects: ' + PH.esc(e.message) + '</div>';
     }
   }
-
-  document.getElementById('createBtn').addEventListener('click', async () => {
-    const name = document.getElementById('pname').value.trim();
-    const goal = document.getElementById('pgoal').value.trim();
-    const msg = document.getElementById('createMsg');
-    if (!name || !goal) { msg.innerHTML = '<div class="banner err">Name and goal are both required.</div>'; return; }
-    msg.innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search with AI…</div>';
-    try {
-      const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters: readFilters() } });
-      location.href = 'project.html?id=' + encodeURIComponent(project.id);
-    } catch (e) {
-      msg.innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>';
-    }
-  });
 
   load();
 });
