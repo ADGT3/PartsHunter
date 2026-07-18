@@ -48,8 +48,8 @@ document.addEventListener('DOMContentLoaded', async function () {
   const KIND = { oem: 'OEM', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
   const voteStyle = (on, kind) => { const b = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .12s;"; if (on && kind === 'up') return b + "background:rgba(88,201,138,.16);border:1px solid #58c98a;color:#58c98a;"; if (on && kind === 'down') return b + "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;"; return b + "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;"; };
   const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
-  const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
-  let data = null, sfilter = 'all', kfilter = 'all', feedback = {};
+  const badge = (label, color, bg, fs) => "font-family:'JetBrains Mono',monospace;font-size:" + (fs || 10) + "px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
+  let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {};
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
 
   async function loadData() { data = await PH.api('/api/list?id=' + encodeURIComponent(id)); feedback = fbMap(data.feedback); }
@@ -67,37 +67,43 @@ document.addEventListener('DOMContentLoaded', async function () {
   // A source found, rendered as a full listing card (same style as search Results).
   function sourceCard(p, a) {
     const url = a.url, v = feedback[url] || 0, saved = url && PH.watch.has(url);
-    const b = a.best ? badge('BEST', '#58c98a', 'rgba(88,201,138,.13)') : badge(KIND[a.kind] || 'ALT', '#8b9096', 'rgba(139,144,150,.12)');
-    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px;text-decoration:none;color:inherit;background:#131518;border:1px solid " + (a.best ? 'rgba(88,201,138,.4)' : '#23272c') + ";border-radius:14px;" + (url ? 'cursor:pointer;' : '');
-    const thumb = '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
+    const bLabel = a.best ? 'BEST' : (KIND[a.kind] || 'ALT');
+    const bStyle = a.best ? badge('BEST', '#58c98a', 'rgba(88,201,138,.13)') : badge(bLabel, '#8b9096', 'rgba(139,144,150,.12)');
+    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:14px 16px;text-decoration:none;color:inherit;background:#16181b;border:1px solid " + (a.best ? 'rgba(88,201,138,.4)' : '#24282d') + ";border-radius:12px;" + (url ? 'cursor:pointer;' : '');
+    const thumb = '<div style="width:96px;height:74px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
     const inner = thumb +
-      '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:6px"><span style="' + b + '">' + (a.best ? 'BEST' : (KIND[a.kind] || 'ALT')) + '</span>' +
-        '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15.5px;margin:0;line-height:1.3">' + PH.esc(a.label) + '</h3></div>' +
+      '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="' + bStyle + '">' + bLabel + '</span>' +
+        '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15px;margin:0;line-height:1.3">' + PH.esc(a.label) + '</h3></div>' +
         '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + PH.esc(p.desc || '') + ' &nbsp;·&nbsp; PN ' + PH.esc(p.pn || '—') + '</div></div>' +
-      '<div style="display:flex;align-items:center;gap:16px;flex-shrink:0" data-nolink>' +
-        '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap;color:' + (a.best ? '#58c98a' : '#e9ebed') + '">' + money(a.price) + '</div>' +
+      '<div style="display:flex;align-items:center;gap:14px;flex-shrink:0" data-nolink>' +
+        '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:19px;white-space:nowrap;color:' + (a.best ? '#58c98a' : '#e9ebed') + '">' + money(a.price) + '</div>' +
         '<div style="display:flex;gap:7px" data-url="' + PH.esc(url || '') + '">' +
           (url ? '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div><div class="jup" title="Good source" style="' + voteStyle(v === 1, 'up') + '">▲</div><div class="jdown" title="Bad source" style="' + voteStyle(v === -1, 'down') + '">▼</div>' : '') +
         '</div></div>';
     return url ? '<a href="' + PH.esc(url) + '" target="_blank" rel="noopener" style="' + rowStyle + '">' + inner + '</a>' : '<div style="' + rowStyle + '">' + inner + '</div>';
   }
 
-  function groupHtml(p) {
-    const st = STAT[p.status];
+  // The part row (original format) + expandable Sources Found.
+  function rowHtml(p) {
+    const st = STAT[p.status], isOpen = !!open[p.id];
     const pct = p.status === 'saving' && p.est ? Math.round(p.saving / p.est * 100) : 0;
-    const savings = p.status === 'saving'
-      ? '<span style="text-decoration:line-through;color:#6b7076">' + money(p.est) + '</span> &nbsp;·&nbsp; <span style="color:#58c98a">−' + money(p.saving) + ' · ' + pct + '%</span>'
-      : (p.status === 'nocheaper' ? 'OEM best price' : (p.est != null ? '<span style="text-decoration:line-through;color:#6b7076">' + money(p.est) + '</span> · no cheaper source found' : 'no source found'));
-    const header = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:11px;margin-bottom:12px;padding-bottom:11px;border-bottom:1px solid #22262b">' +
-      '<span style="' + badge(st.label, st.color, st.bg) + '">' + st.label + '</span>' +
-      '<h2 style="font-family:Archivo,sans-serif;font-weight:700;font-size:17px;margin:0;letter-spacing:-.01em">' + PH.esc(p.desc || '') + '</h2>' +
-      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#6b7076">PN ' + PH.esc(p.pn || '—') + (p.qty != null ? ' · qty ' + p.qty : '') + '</span>' +
-      '<div style="flex:1"></div>' +
-      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:12px">' + savings + '</span></div>';
-    const cards = (p.alts && p.alts.length)
-      ? '<div style="display:flex;flex-direction:column;gap:12px">' + p.alts.map((a) => sourceCard(p, a)).join('') + '</div>'
-      : '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12.5px;color:#6b7076;padding:6px 2px">No source found for this part.</div>';
-    return '<div style="margin-bottom:28px">' + header + cards + '</div>';
+    const foundStyle = 'font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap;color:' + (p.status === 'saving' ? '#58c98a' : '#e9ebed');
+    const saveLabel = p.status === 'saving' ? '−' + money(p.saving) + ' · ' + pct + '%' : (p.status === 'nocheaper' ? 'OEM best' : 'Not found');
+    const matchLabel = p.matches > 0 ? p.matches + (p.matches === 1 ? ' source' : ' sources') : '—';
+    const wrapBorder = p.status === 'saving' ? 'rgba(88,201,138,.4)' : '#23272c';
+    const parent =
+      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px 17px">' +
+        '<div style="flex:1;min-width:200px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="' + badge(st.label, st.color, st.bg) + '">' + st.label + '</span>' +
+          '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15px;margin:0;line-height:1.3">' + PH.esc(p.desc || '') + '</h3></div>' +
+          '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">PN ' + PH.esc(p.pn || '—') + ' &nbsp;·&nbsp; qty ' + (p.qty != null ? p.qty : '—') + ' &nbsp;·&nbsp; ' + matchLabel + '</div></div>' +
+        '<div style="text-align:right"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">ESTIMATE</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:14px;color:#9aa0a6;text-decoration:line-through">' + money(p.est) + '</div></div>' +
+        '<div style="width:22px;text-align:center;color:#4e5359">→</div>' +
+        '<div style="text-align:right;min-width:96px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">BEST FOUND</div><div style="' + foundStyle + '">' + (p.found != null ? money(p.found) : '—') + '</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;font-weight:600;color:' + st.color + '">' + saveLabel + '</div></div>' +
+        (p.matches > 0 ? '<div class="chev" style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;flex-shrink:0">' + (isOpen ? '▲' : '▼') + '</div>' : '<div style="width:34px"></div>') +
+      '</div>';
+    const cards = (p.alts || []).map((a) => sourceCard(p, a)).join('');
+    const expand = (isOpen && cards) ? '<div style="border-top:1px solid #22262b;padding:14px 17px 16px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076;margin:0 0 10px">SOURCES FOUND</div><div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div></div>' : '';
+    return '<div data-id="' + PH.esc(p.id) + '" style="background:#131518;border:1px solid ' + wrapBorder + ';border-radius:14px;overflow:hidden">' + parent + expand + '</div>';
   }
 
   function render() {
@@ -120,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       '</div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Status</span><span id="schips">' + chip('s', 'all', sfilter, 'All', sc.all) + chip('s', 'saving', sfilter, 'Savings', sc.saving) + chip('s', 'nocheaper', sfilter, 'OEM best', sc.nocheaper) + chip('s', 'notfound', sfilter, 'No match', sc.notfound) + '</span></div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem', kfilter, 'OEM', kc.oem) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span></div>' +
-      '<div id="rows"></div>';
+      '<div id="rows" style="display:flex;flex-direction:column;gap:12px"></div>';
     document.querySelectorAll('#schips .schip').forEach((el) => el.addEventListener('click', () => { sfilter = el.dataset.v; render(); }));
     document.querySelectorAll('#kchips .kchip').forEach((el) => el.addEventListener('click', () => { kfilter = el.dataset.v; render(); }));
     drawRows();
@@ -129,21 +135,24 @@ document.addEventListener('DOMContentLoaded', async function () {
   function drawRows() {
     const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || p.kind === kfilter));
     const el = document.getElementById('rows');
-    el.innerHTML = shown.map(groupHtml).join('') || '<div class="banner">Nothing in this filter.</div>';
-    el.querySelectorAll('[data-url]').forEach((grp) => {
-      const url = grp.dataset.url; if (!url) return;
-      const part = data.results.find((p) => (p.alts || []).some((a) => a.url === url));
-      const alt = part && (part.alts || []).find((a) => a.url === url);
+    el.innerHTML = shown.map(rowHtml).join('') || '<div class="banner">Nothing in this filter.</div>';
+    el.querySelectorAll('[data-id]').forEach((wrap) => {
+      const p = data.results.find((x) => x.id === wrap.dataset.id);
       const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
-      const up = grp.querySelector('.jup'), down = grp.querySelector('.jdown'), sv = grp.querySelector('.jsave');
-      if (up) up.addEventListener('click', (e) => { stop(e); voteSrc(part, url, (feedback[url] > 0) ? 0 : 1); });
-      if (down) down.addEventListener('click', (e) => { stop(e); voteSrc(part, url, (feedback[url] < 0) ? 0 : -1); });
-      if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url, title: part.desc, price: alt ? alt.price : null, seller: alt ? alt.label : '', section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(url) ? 'Saved to watchlist' : 'Removed from watchlist'); });
+      const chev = wrap.querySelector('.chev'); if (chev) chev.addEventListener('click', (e) => { stop(e); open[p.id] = !open[p.id]; drawRows(); });
+      wrap.querySelectorAll('[data-url]').forEach((box) => {
+        const url = box.dataset.url; if (!url) return;
+        const alt = (p.alts || []).find((a) => a.url === url);
+        const up = box.querySelector('.jup'), down = box.querySelector('.jdown'), sv = box.querySelector('.jsave');
+        if (up) up.addEventListener('click', (e) => { stop(e); voteSrc(p, url, (feedback[url] > 0) ? 0 : 1); });
+        if (down) down.addEventListener('click', (e) => { stop(e); voteSrc(p, url, (feedback[url] < 0) ? 0 : -1); });
+        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url, title: p.desc, price: alt ? alt.price : null, seller: alt ? alt.label : '', section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(url) ? 'Saved to watchlist' : 'Removed from watchlist'); });
+      });
     });
   }
-  async function voteSrc(part, url, value) {
+  async function voteSrc(p, url, value) {
     try {
-      await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url, title: part ? part.desc : '', vote: value } });
+      await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url, title: p ? p.desc : '', vote: value } });
       if (value === 0) delete feedback[url]; else feedback[url] = value;
       drawRows();
     } catch (e) { PH.toast('Vote failed: ' + e.message); }
