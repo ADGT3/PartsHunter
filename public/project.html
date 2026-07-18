@@ -126,7 +126,6 @@ document.addEventListener('DOMContentLoaded', function () {
     return best;
   }
 
-  // ---- Edit search = Set your target ----
   const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
   function drawSrc() {
     $('eSrc').innerHTML = SRC.map(([k, label]) => {
@@ -140,8 +139,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   function openEdit() {
     const c = state.project.config || {}, f = c.filters || {};
-    $('eName').value = state.project.name || '';
-    $('eGoal').value = state.project.goal || '';
+    $('eName').value = state.project.name || ''; $('eGoal').value = state.project.goal || '';
     src.oem = !!f.oem; src.aftermarket = !!f.aftermarket; src.salvage = !!f.salvage; drawSrc();
     $('eCountry').value = f.country || 'all';
     $('editPanel').style.display = 'block'; window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -155,7 +153,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Re-drafting and re-running… this can take a couple of minutes.</div>';
     try {
       await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, goal, config: { filters }, reexpand: true } });
-      const r = await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
+      await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
       const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
       state.project = data.project; state.listings = data.listings || []; state.feedback = fbMap(data.feedback);
       $('editPanel').style.display = 'none'; $('pName').textContent = state.project.name; $('pGoal').textContent = state.project.goal;
@@ -207,35 +205,38 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function rowHtml(l) {
     const v = state.feedback[l.url] || 0, sc = scoreOf(l), saved = PH.watch.has(l.url);
-    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px;cursor:pointer;background:#131518;border:1px solid " +
-      (v === 1 ? 'rgba(88,201,138,.4)' : v === -1 ? '#2a2e34' : '#23272c') + ";border-radius:14px;transition:border-color .15s;" + (v === -1 ? 'opacity:.55;' : '');
+    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px;text-decoration:none;color:inherit;background:#131518;border:1px solid " +
+      (v === 1 ? 'rgba(88,201,138,.4)' : v === -1 ? '#2a2e34' : '#23272c') + ";border-radius:14px;transition:border-color .15s;" + (v === -1 ? 'opacity:.55;' : '') + (l.url ? 'cursor:pointer;' : '');
     const isrc = imgUrl(l.image);
     const thumb = isrc
       ? '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;overflow:hidden;border:1px solid #24282d"><img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.innerHTML=\'\'" style="width:100%;height:100%;object-fit:cover"></div>'
       : '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
     const pnBadge = (l.badges || []).find((b) => /^(pn|lot)\b/i.test(b) || /\d{3}/.test(b));
     const meta = [l.seller, l.condition, pnBadge].filter(Boolean).map((x) => PH.esc(x)).join(' &nbsp;·&nbsp; ');
-    return '<div style="' + rowStyle + '" data-url="' + PH.esc(l.url) + '">' + thumb +
+    const inner = thumb +
       '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">' +
         '<div style="' + scoreStyle(sc) + '">' + sc + '</div><h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15.5px;margin:0;line-height:1.3">' + PH.esc(l.title) + '</h3></div>' +
         '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + (meta || '&nbsp;') + '</div></div>' +
-      '<div style="display:flex;align-items:center;gap:16px;flex-shrink:0">' +
+      '<div style="display:flex;align-items:center;gap:16px;flex-shrink:0" data-nolink>' +
         '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap;color:#e9ebed">' + PH.esc(PH.fmtPrice(l.price)) + '</div>' +
         '<div style="display:flex;gap:7px">' +
           '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div>' +
           '<div class="jup" title="More like this" style="' + voteStyle(v === 1, 'up') + '">▲</div>' +
           '<div class="jdown" title="Less like this" style="' + voteStyle(v === -1, 'down') + '">▼</div>' +
-        '</div></div></div>';
+        '</div></div>';
+    if (l.url) return '<a href="' + PH.esc(l.url) + '" target="_blank" rel="noopener" style="' + rowStyle + '" data-url="' + PH.esc(l.url) + '">' + inner + '</a>';
+    return '<div style="' + rowStyle + '" data-url="' + PH.esc(l.url || '') + '">' + inner + '</div>';
   }
 
   function wire() {
     $('results').querySelectorAll('[data-url]').forEach((row) => {
       const url = row.dataset.url, l = state.listings.find((x) => x.url === url);
-      row.addEventListener('click', () => { if (l.url) window.open(l.url, '_blank', 'noopener'); });
-      row.querySelector('.jup').addEventListener('click', (e) => { e.stopPropagation(); vote(l, (state.feedback[url] > 0) ? 0 : 1); });
-      row.querySelector('.jdown').addEventListener('click', (e) => { e.stopPropagation(); vote(l, (state.feedback[url] < 0) ? 0 : -1); });
+      if (!l) return;
+      const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+      row.querySelector('.jup').addEventListener('click', (e) => { stop(e); vote(l, (state.feedback[url] > 0) ? 0 : 1); });
+      row.querySelector('.jdown').addEventListener('click', (e) => { stop(e); vote(l, (state.feedback[url] < 0) ? 0 : -1); });
       row.querySelector('.jsave').addEventListener('click', (e) => {
-        e.stopPropagation();
+        stop(e);
         PH.watch.toggle({ url: l.url, title: l.title, price: l.price, seller: l.seller, image: l.image, section: l.section, projectId: id, projectName: state.project.name });
         PH.updateWatchCount(); render(); PH.toast(PH.watch.has(url) ? 'Saved to watchlist' : 'Removed from watchlist');
       });
