@@ -6,7 +6,8 @@ import { requireAuth } from './_auth.js';
  *                                           store it under config.manualSources[partId], recompute
  *                                           that project's results + totals, return { results, totals }.
  * DELETE { projectId, partId, id }        -> remove a stored manual source, recompute, return same.
- * Manual sources persist across re-hunts (run-list.js merges them back in) and are tagged provider:'user'. */
+ * Manual sources persist across re-hunts (run-list.js merges them back in) and are tagged provider:'user'.
+ * Page fetch escalates: direct -> Browserless /unblock (residential, bypasses bot detection/CAPTCHA) -> /content. */
 
 /* ---------- shared price/fx/kind helpers (kept in sync with run-list.js) ---------- */
 function parseAmount(v) {
@@ -89,23 +90,45 @@ function pick(re, html) { const m = html.match(re); return m ? String(m[1]).trim
 function decode(s) { return String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim(); }
 
 async function getHtml(url) {
+  // 1. Direct fetch — fast; works for un-protected sites.
   try {
-    const c = new AbortController(); const t = setTimeout(() => c.abort(), 12000);
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), 9000);
     const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'accept-language': 'en' }, signal: c.signal });
     clearTimeout(t);
     if (r.ok) { const txt = await r.text(); if (txt && txt.length > 500) return txt; }
-  } catch (e) { /* fall through to browserless */ }
+  } catch (e) { /* fall through */ }
+
   const key = process.env.BROWSERLESS_API_KEY;
-  if (key) {
-    for (const host of ['https://production-sfo.browserless.io', 'https://chrome.browserless.io']) {
-      try {
-        const c = new AbortController(); const t = setTimeout(() => c.abort(), 30000);
-        const r = await fetch(host + '/content?token=' + key, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url, waitForTimeout: 3500, bestAttempt: true }), signal: c.signal });
-        clearTimeout(t);
-        if (r.ok) { const txt = await r.text(); if (txt && txt.length > 300) return txt; }
-      } catch (e) { /* try next host */ }
-    }
-  }
+  if (!key) return null;
+  const base = process.env.BROWSERLESS_BASE || 'https://production-sfo.browserless.io';
+
+  // 2. /unblock with residential proxy — bypasses bot detection / most anti-bot walls.
+  const unblock = async (residential) => {
+    try {
+      const c = new AbortController(); const t = setTimeout(() => c.abort(), 45000);
+      const r = await fetch(base + '/unblock?token=' + key + (residential ? '&proxy=residential' : ''), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url, content: true, cookies: false, screenshot: false, browserWSEndpoint: false, bestAttempt: true, waitForTimeout: 4000 }),
+        signal: c.signal
+      });
+      clearTimeout(t);
+      if (r.ok) { const j = await r.json(); if (j && typeof j.content === 'string' && j.content.length > 300) return j.content; }
+    } catch (e) { /* try next */ }
+    return null;
+  };
+  let html = await unblock(true);
+  if (html) return html;
+  html = await unblock(false); // in case the residential add-on isn't enabled
+  if (html) return html;
+
+  // 3. Plain /content — last resort.
+  try {
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), 25000);
+    const r = await fetch(base + '/content?token=' + key, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url, waitForTimeout: 3500, bestAttempt: true }), signal: c.signal });
+    clearTimeout(t);
+    if (r.ok) { const txt = await r.text(); if (txt && txt.length > 300) return txt; }
+  } catch (e) { /* give up */ }
   return null;
 }
 function extract(html) {
