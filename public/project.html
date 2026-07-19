@@ -45,31 +45,6 @@
   </div>
   <div id="pGoal" class="muted" style="font-size:13.5px;max-width:640px;margin:2px 0 0"></div>
 
-  <!-- Edit search = Set your target -->
-  <div id="editPanel" style="display:none;background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px;margin:18px 0">
-    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">PROJECT NAME</label>
-    <input id="eName" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:22px">
-    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">WHAT ARE YOU HUNTING FOR?</label>
-    <textarea id="eGoal" rows="4" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:14.5px;line-height:1.55;resize:vertical;margin-bottom:22px"></textarea>
-    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES</label>
-    <div id="eSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px"></div>
-    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">COUNTRY</label>
-    <select id="eCountry" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:24px">
-      <option value="all">All countries</option><option value="au">Australia</option><option value="us">United States</option>
-      <option value="gb">United Kingdom</option><option value="ca">Canada</option><option value="nz">New Zealand</option>
-      <option value="de">Germany</option><option value="jp">Japan</option><option value="ae">United Arab Emirates</option>
-    </select>
-    <div style="display:flex;align-items:flex-start;gap:10px;padding:13px 15px;background:rgba(255,90,44,.08);border:1px solid rgba(255,90,44,.22);border-radius:10px;margin-bottom:24px">
-      <span style="color:#ff6a3d;font-size:15px;line-height:1.4">◆</span>
-      <span style="font-size:13px;color:#c8cccf;line-height:1.5">Updating re-drafts the search queries &amp; rules from your goal, then re-runs the hunt.</span>
-    </div>
-    <div style="display:flex;gap:12px">
-      <div id="updateBtn" style="padding:13px 22px;border-radius:9px;font-weight:700;font-size:14.5px;cursor:pointer;background:#ff5a2c;color:#0d0e10">Update &amp; re-run &#8594;</div>
-      <div id="cancelEdit" style="padding:13px 22px;border-radius:9px;border:1px solid #2a2e34;color:#a3a8af;font-weight:600;font-size:14.5px;cursor:pointer">Cancel</div>
-    </div>
-    <div id="editMsg" style="margin-top:14px"></div>
-  </div>
-
   <div id="catRow" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;margin:22px 0 14px">
     <span style="font-size:12.5px;color:#6b7076;margin-right:2px">Category</span><span id="catChips"></span>
   </div>
@@ -94,8 +69,9 @@ document.addEventListener('DOMContentLoaded', function () {
   PH.updateWatchCount();
   const $ = (i) => document.getElementById(i);
   let state = { project: null, listings: [], feedback: {}, category: 'All', sort: 'best' };
-  const src = { oem: false, aftermarket: false, salvage: false };
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
+
+  $('editBtn').addEventListener('click', () => { location.href = 'draft.html?id=' + encodeURIComponent(id); });
 
   const scoreStyle = (sc) => "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" +
     (sc >= 88 ? '#58c98a' : sc >= 70 ? '#e0a53c' : '#8b9096') + ";background:" + (sc >= 88 ? 'rgba(88,201,138,.14)' : sc >= 70 ? 'rgba(224,165,60,.14)' : 'rgba(139,144,150,.12)') + ";";
@@ -112,8 +88,17 @@ document.addEventListener('DOMContentLoaded', function () {
   const sortChipStyle = (on) => "display:inline-flex;padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;" +
     (on ? "background:#1f2327;border:1px solid #3a4046;color:#e9ebed;" : "background:transparent;border:1px solid #23272c;color:#8b9096;");
 
-  function baseScore(l) { let s = 72; const b = (l.badges || []).join(' ').toLowerCase(); if (/oem|genuine/.test(b)) s += 10; if (/verified|in stock|available/.test(b)) s += 5; if (l.price_num != null) s += 4; if (l.image) s += 3; if (l.source === 'salvage') s += 2; return s; }
+  function baseScore(l) {
+    let s = 72; const b = (l.badges || []).join(' ').toLowerCase();
+    if (/oem|genuine/.test(b)) s += 10;
+    if (/verified|in stock|available/.test(b)) s += 5;
+    if (l.price_num != null) s += 4;
+    if (l.image) s += 3;
+    if (l.source === 'salvage') s += 2;
+    return s;
+  }
   function scoreOf(l) { let s = baseScore(l); const v = state.feedback[l.url] || 0; if (v > 0) s += 3; if (v < 0) s -= 4; return Math.max(5, Math.min(99, s)); }
+
   function snapCategory(l, cats) {
     const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const sec = norm(l.section);
@@ -126,41 +111,6 @@ document.addEventListener('DOMContentLoaded', function () {
     return best;
   }
 
-  const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
-  function drawSrc() {
-    $('eSrc').innerHTML = SRC.map(([k, label]) => {
-      const on = src[k];
-      const style = 'display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s;' +
-        (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:#0f1113;border:1px solid #2a2e34;color:#8b9096;');
-      const dot = 'width:8px;height:8px;border-radius:50%;background:' + (on ? '#ff5a2c' : '#3a4046') + ';';
-      return '<div class="esrc" data-k="' + k + '" style="' + style + '"><span style="' + dot + '"></span>' + label + '</div>';
-    }).join('');
-    $('eSrc').querySelectorAll('.esrc').forEach((el) => el.addEventListener('click', () => { src[el.dataset.k] = !src[el.dataset.k]; drawSrc(); }));
-  }
-  function openEdit() {
-    const c = state.project.config || {}, f = c.filters || {};
-    $('eName').value = state.project.name || ''; $('eGoal').value = state.project.goal || '';
-    src.oem = !!f.oem; src.aftermarket = !!f.aftermarket; src.salvage = !!f.salvage; drawSrc();
-    $('eCountry').value = f.country || 'all';
-    $('editPanel').style.display = 'block'; window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-  $('editBtn').addEventListener('click', () => { const open = $('editPanel').style.display === 'block'; if (open) $('editPanel').style.display = 'none'; else openEdit(); });
-  $('cancelEdit').addEventListener('click', () => { $('editPanel').style.display = 'none'; });
-  $('updateBtn').addEventListener('click', async () => {
-    const name = $('eName').value.trim(), goal = $('eGoal').value.trim();
-    if (!name || !goal) { $('editMsg').innerHTML = '<div class="banner err">Name and goal are required.</div>'; return; }
-    const filters = { oem: src.oem, aftermarket: src.aftermarket, salvage: src.salvage, country: $('eCountry').value };
-    $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Re-drafting and re-running… this can take a couple of minutes.</div>';
-    try {
-      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, goal, config: { filters }, reexpand: true } });
-      await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
-      const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
-      state.project = data.project; state.listings = data.listings || []; state.feedback = fbMap(data.feedback);
-      $('editPanel').style.display = 'none'; $('pName').textContent = state.project.name; $('pGoal').textContent = state.project.goal;
-      learn(); render();
-    } catch (e) { $('editMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
-  });
-
   async function load() {
     try {
       const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
@@ -169,13 +119,21 @@ document.addEventListener('DOMContentLoaded', function () {
       learn(); render();
     } catch (e) { $('results').innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>'; }
   }
+  function learn() {
+    const n = Object.keys(state.feedback).length;
+    $('learnPill').innerHTML = 'Learning — <span style="color:#58c98a;font-weight:600">' + n + ' signal' + (n === 1 ? '' : 's') + '</span> from your feedback';
+  }
   function learn() { const n = Object.keys(state.feedback).length; $('learnPill').innerHTML = 'Learning — <span style="color:#58c98a;font-weight:600">' + n + ' signal' + (n === 1 ? '' : 's') + '</span> from your feedback'; }
 
   function render() {
     const c = state.project.config || {};
     $('kicker').textContent = '// ' + state.listings.length + ' MATCHES';
     const out = $('results');
-    if (!state.listings.length) { $('catRow').style.display = 'none'; $('sortRow').style.display = 'none'; out.innerHTML = '<div class="banner">No listings yet. Hit <b>Edit search</b> → <b>Update &amp; re-run</b>.</div>'; return; }
+    if (!state.listings.length) {
+      $('catRow').style.display = 'none'; $('sortRow').style.display = 'none';
+      out.innerHTML = '<div class="banner">No listings yet. Hit <b>Edit search</b> → <b>Update &amp; re-run</b>.</div>';
+      return;
+    }
     $('catRow').style.display = 'flex'; $('sortRow').style.display = 'flex';
     const defined = (c.categories || []).filter(Boolean);
     const useDefined = defined.length > 0;
@@ -205,38 +163,33 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function rowHtml(l) {
     const v = state.feedback[l.url] || 0, sc = scoreOf(l), saved = PH.watch.has(l.url);
-    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px;text-decoration:none;color:inherit;background:#131518;border:1px solid " +
-      (v === 1 ? 'rgba(88,201,138,.4)' : v === -1 ? '#2a2e34' : '#23272c') + ";border-radius:14px;transition:border-color .15s;" + (v === -1 ? 'opacity:.55;' : '') + (l.url ? 'cursor:pointer;' : '');
+    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px;background:#131518;border:1px solid " +
+      (v === 1 ? 'rgba(88,201,138,.4)' : v === -1 ? '#2a2e34' : '#23272c') + ";border-radius:14px;transition:border-color .15s;" + (v === -1 ? 'opacity:.55;' : '');
     const isrc = imgUrl(l.image);
     const thumb = isrc
       ? '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;overflow:hidden;border:1px solid #24282d"><img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.innerHTML=\'\'" style="width:100%;height:100%;object-fit:cover"></div>'
       : '<div style="width:108px;height:84px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
     const pnBadge = (l.badges || []).find((b) => /^(pn|lot)\b/i.test(b) || /\d{3}/.test(b));
     const meta = [l.seller, l.condition, pnBadge].filter(Boolean).map((x) => PH.esc(x)).join(' &nbsp;·&nbsp; ');
-    const inner = thumb +
+    return '<div style="' + rowStyle + '" data-url="' + PH.esc(l.url) + '">' + thumb +
       '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:6px">' +
         '<div style="' + scoreStyle(sc) + '">' + sc + '</div><h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15.5px;margin:0;line-height:1.3">' + PH.esc(l.title) + '</h3></div>' +
         '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + (meta || '&nbsp;') + '</div></div>' +
-      '<div style="display:flex;align-items:center;gap:16px;flex-shrink:0" data-nolink>' +
-        '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap;color:#e9ebed">' + PH.esc(PH.fmtPrice(l.price)) + '</div>' +
+      '<div style="display:flex;align-items:center;gap:16px;flex-shrink:0">' +
+        '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap"><a href="' + PH.esc(l.url) + '" target="_blank" rel="noopener" style="color:#e9ebed">' + PH.esc(PH.fmtPrice(l.price)) + '</a></div>' +
         '<div style="display:flex;gap:7px">' +
           '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div>' +
           '<div class="jup" title="More like this" style="' + voteStyle(v === 1, 'up') + '">▲</div>' +
           '<div class="jdown" title="Less like this" style="' + voteStyle(v === -1, 'down') + '">▼</div>' +
-        '</div></div>';
-    if (l.url) return '<a href="' + PH.esc(l.url) + '" target="_blank" rel="noopener" style="' + rowStyle + '" data-url="' + PH.esc(l.url) + '">' + inner + '</a>';
-    return '<div style="' + rowStyle + '" data-url="' + PH.esc(l.url || '') + '">' + inner + '</div>';
+        '</div></div></div>';
   }
 
   function wire() {
     $('results').querySelectorAll('[data-url]').forEach((row) => {
       const url = row.dataset.url, l = state.listings.find((x) => x.url === url);
-      if (!l) return;
-      const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
-      row.querySelector('.jup').addEventListener('click', (e) => { stop(e); vote(l, (state.feedback[url] > 0) ? 0 : 1); });
-      row.querySelector('.jdown').addEventListener('click', (e) => { stop(e); vote(l, (state.feedback[url] < 0) ? 0 : -1); });
-      row.querySelector('.jsave').addEventListener('click', (e) => {
-        stop(e);
+      row.querySelector('.jup').addEventListener('click', () => vote(l, (state.feedback[url] > 0) ? 0 : 1));
+      row.querySelector('.jdown').addEventListener('click', () => vote(l, (state.feedback[url] < 0) ? 0 : -1));
+      row.querySelector('.jsave').addEventListener('click', () => {
         PH.watch.toggle({ url: l.url, title: l.title, price: l.price, seller: l.seller, image: l.image, section: l.section, projectId: id, projectName: state.project.name });
         PH.updateWatchCount(); render(); PH.toast(PH.watch.has(url) ? 'Saved to watchlist' : 'Removed from watchlist');
       });
