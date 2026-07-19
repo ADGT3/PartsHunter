@@ -3,8 +3,8 @@ import { requireAuth } from './_auth.js';
 
 /* Parts-list hunt engine. For every line, use Claude web_search to find MULTIPLE real online
  * sellers + prices (with product URL + kind) so the buyer can compare. Prices parsed robustly
- * (European formats), converted to AUD. Sources deduped per seller (cheapest kept). Product URLs
- * captured from the actual search results and back-filled, preferring product pages over categories. */
+ * (European formats), converted to AUD. Hunted sources are tagged provider:'claude'; any user-added
+ * manual sources (config.manualSources, provider:'user') are merged back in every run so they persist. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -74,6 +74,27 @@ function matchUrl(label, urls) {
     return b.length - a.length;
   });
   return cand[0] || null;
+}
+
+/* Merge user-added manual sources (provider:'user') into a computed part result. */
+function buildManualAlts(list, toAud) {
+  return (list || []).map((m) => {
+    const aud = toAud(parseAmount(m.price), m.currency);
+    return { label: (m.label || '') + (m.location ? ' · ' + m.location : ''), price: aud == null ? null : Math.round(aud), url: m.url || null, kind: normKind(m.kind), provider: 'user', manual: true, id: m.id, image: m.image || null };
+  });
+}
+function mergePart(p, manual) {
+  const hunted = (p.alts || []).filter((a) => a.provider !== 'user').map((a) => Object.assign({}, a, { best: false, provider: a.provider || 'claude' }));
+  const combined = hunted.concat(manual);
+  combined.sort((a, b) => (a.price == null ? Infinity : a.price) - (b.price == null ? Infinity : b.price));
+  combined.forEach((a) => (a.best = false));
+  const fp = combined.find((a) => a.price != null); if (fp) fp.best = true;
+  p.alts = combined.slice(0, 12); p.matches = combined.length;
+  if (fp) {
+    p.found = fp.price; p.source = fp.label; p.url = fp.url; p.kind = fp.kind;
+    if (p.est != null && fp.price < p.est) { p.status = 'saving'; p.saving = Math.round(p.est - fp.price); }
+    else { p.status = 'nocheaper'; p.saving = 0; }
+  } else { p.found = null; p.source = null; p.url = null; p.kind = null; p.status = 'notfound'; p.saving = 0; }
 }
 
 async function findChunk(parts, wants) {
@@ -159,6 +180,7 @@ export default async function handler(req, res) {
     const estCur = cfg.currency || 'AUD';
     const f = cfg.filters || {};
     const wants = []; if (f.oem) wants.push('oem'); if (f.aftermarket) wants.push('aftermarket'); if (f.salvage) wants.push('salvage');
+    const manualAll = (cfg.manualSources && typeof cfg.manualSources === 'object') ? cfg.manualSources : {};
 
     const toAud = await fxToAud();
     const started = Date.now();
@@ -201,9 +223,15 @@ export default async function handler(req, res) {
         if (est != null && foundP < est) { status = 'saving'; saving = Math.round(est - foundP); }
         else status = 'nocheaper';
       }
-      const alts = raw.slice(0, 8).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind }));
+      const alts = raw.slice(0, 8).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind, provider: 'claude' }));
       return { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
     });
+
+    // Fold in any user-added manual sources so they survive the re-hunt.
+    for (const p of results) {
+      const manual = buildManualAlts(manualAll[p.id], toAud);
+      if (manual.length) mergePart(p, manual);
+    }
 
     const estTotal = Math.round(results.reduce((n, r) => n + (r.est || 0), 0));
     const foundTotal = Math.round(results.reduce((n, r) => n + (r.found != null ? r.found : (r.est || 0)), 0));
