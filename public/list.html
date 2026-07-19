@@ -103,11 +103,13 @@ document.addEventListener('DOMContentLoaded', async function () {
   const id = PH.qs('id'), wantRun = PH.qs('run') === '1';
   const body = document.getElementById('body');
   const $ = (i) => document.getElementById(i);
+  const imgUrl = (u) => { if (!u) return ''; u = String(u).trim(); return u.slice(0, 2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
   const money = (n) => n == null ? '—' : '$' + Math.round(Number(n)).toLocaleString('en-AU');
   const STAT = { saving: { label: 'SAVING', color: '#58c98a', bg: 'rgba(88,201,138,.13)' }, nocheaper: { label: 'OEM BEST', color: '#8b9096', bg: 'rgba(139,144,150,.12)' }, notfound: { label: 'NO MATCH', color: '#e0a53c', bg: 'rgba(224,165,60,.13)' } };
   const KIND = { oem: 'OEM', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
   const voteStyle = (on, kind) => { const b = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .12s;"; if (on && kind === 'up') return b + "background:rgba(88,201,138,.16);border:1px solid #58c98a;color:#58c98a;"; if (on && kind === 'down') return b + "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;"; return b + "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;"; };
   const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
+  const delStyle = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;transition:all .12s;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;";
   const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
   let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {}, editLines = [];
   const esrc = { oem: false, aftermarket: false, salvage: false };
@@ -243,6 +245,23 @@ document.addEventListener('DOMContentLoaded', async function () {
     try { await PH.api('/api/run-list', { method: 'POST', body: { projectId: id } }); await loadData(); render(); }
     catch (e) { body.innerHTML = '<div class="banner err">Hunt failed: ' + PH.esc(e.message) + '</div>'; }
   }
+
+  /* ---------- user-added ("User") sources: derive from a URL ---------- */
+  async function addSource(p, url, msgEl, btnEl) {
+    url = (url || '').trim();
+    if (!/^https?:\/\//i.test(url)) { if (msgEl) msgEl.innerHTML = '<span style="color:#ff6a3d;font-size:12px">Enter a full URL starting with http…</span>'; return; }
+    const orig = btnEl.textContent; btnEl.style.pointerEvents = 'none'; btnEl.innerHTML = '<span class="spinner"></span> Reading…';
+    if (msgEl) msgEl.innerHTML = '';
+    try {
+      const r = await PH.api('/api/list-source', { method: 'POST', body: { projectId: id, partId: p.id, url } });
+      data.results = r.results; data.totals = r.totals; open[p.id] = true; render();
+    } catch (e) { btnEl.style.pointerEvents = 'auto'; btnEl.textContent = orig; if (msgEl) msgEl.innerHTML = '<span style="color:#ff6a3d;font-size:12px">' + PH.esc(e.message) + '</span>'; }
+  }
+  async function delSource(p, sid) {
+    try { const r = await PH.api('/api/list-source', { method: 'DELETE', body: { projectId: id, partId: p.id, id: sid } }); data.results = r.results; data.totals = r.totals; open[p.id] = true; render(); }
+    catch (e) { PH.toast('Remove failed: ' + e.message); }
+  }
+
   function chip(kind, val, cur, label, n) {
     const on = cur === val;
     const style = 'display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;' + (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:transparent;border:1px solid #23272c;color:#8b9096;');
@@ -253,10 +272,15 @@ document.addEventListener('DOMContentLoaded', async function () {
     const key = keyOf(p, a), href = hrefOf(p, a), v = feedback[key] || 0, saved = PH.watch.has(href);
     const bLabel = a.best ? 'BEST' : (KIND[a.kind] || 'ALT');
     const bStyle = a.best ? badge('BEST', '#58c98a', 'rgba(88,201,138,.13)') : badge(bLabel, '#8b9096', 'rgba(139,144,150,.12)');
+    const prov = a.provider === 'user' ? ['User', '#ff6a3d', 'rgba(255,90,44,.14)'] : ['Claude', '#8ab4f8', 'rgba(138,180,248,.12)'];
+    const provBadge = '<span style="' + badge(prov[0], prov[1], prov[2]) + '">' + prov[0] + '</span>';
     const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:14px 16px;text-decoration:none;color:inherit;cursor:pointer;background:#16181b;border:1px solid " + (a.best ? 'rgba(88,201,138,.4)' : '#24282d') + ";border-radius:12px;";
-    const thumb = '<div style="width:96px;height:74px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
+    const isrc = a.image ? imgUrl(a.image) : '';
+    const thumb = isrc
+      ? '<div style="width:96px;height:74px;border-radius:9px;flex-shrink:0;overflow:hidden;border:1px solid #24282d"><img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.innerHTML=\'\'" style="width:100%;height:100%;object-fit:cover"></div>'
+      : '<div style="width:96px;height:74px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
     const inner = thumb +
-      '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="' + bStyle + '">' + bLabel + '</span>' +
+      '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px;flex-wrap:wrap"><span style="' + bStyle + '">' + bLabel + '</span>' + provBadge +
         '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15px;margin:0;line-height:1.3">' + PH.esc(a.label) + '</h3></div>' +
         '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + PH.esc(p.desc || '') + ' &nbsp;·&nbsp; PN ' + PH.esc(p.pn || '—') + '</div></div>' +
       '<div style="display:flex;align-items:center;gap:14px;flex-shrink:0" data-nolink>' +
@@ -265,6 +289,7 @@ document.addEventListener('DOMContentLoaded', async function () {
           '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div>' +
           '<div class="jup" title="Good source" style="' + voteStyle(v === 1, 'up') + '">▲</div>' +
           '<div class="jdown" title="Bad source" style="' + voteStyle(v === -1, 'down') + '">▼</div>' +
+          (a.manual ? '<div class="jdel" data-del="' + PH.esc(a.id || '') + '" title="Remove your source" style="' + delStyle + '">×</div>' : '') +
         '</div></div>';
     return '<a href="' + PH.esc(href) + '" target="_blank" rel="noopener" style="' + rowStyle + '">' + inner + '</a>';
   }
@@ -274,7 +299,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const pct = p.status === 'saving' && p.est ? Math.round(p.saving / p.est * 100) : 0;
     const foundStyle = 'font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap;color:' + (p.status === 'saving' ? '#58c98a' : '#e9ebed');
     const saveLabel = p.status === 'saving' ? '−' + money(p.saving) + ' · ' + pct + '%' : (p.status === 'nocheaper' ? 'OEM best' : 'Not found');
-    const matchLabel = p.matches > 0 ? p.matches + (p.matches === 1 ? ' source' : ' sources') : '—';
+    const matchLabel = p.matches > 0 ? p.matches + (p.matches === 1 ? ' source' : ' sources') : 'no sources yet';
     const wrapBorder = p.status === 'saving' ? 'rgba(88,201,138,.4)' : '#23272c';
     const parent =
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px 17px">' +
@@ -284,10 +309,20 @@ document.addEventListener('DOMContentLoaded', async function () {
         '<div style="text-align:right"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">ESTIMATE</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:14px;color:#9aa0a6;text-decoration:line-through">' + money(p.est) + '</div></div>' +
         '<div style="width:22px;text-align:center;color:#4e5359">→</div>' +
         '<div style="text-align:right;min-width:96px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">BEST FOUND</div><div style="' + foundStyle + '">' + (p.found != null ? money(p.found) : '—') + '</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;font-weight:600;color:' + st.color + '">' + saveLabel + '</div></div>' +
-        (p.matches > 0 ? '<div class="chev" style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;flex-shrink:0">' + (isOpen ? '▲' : '▼') + '</div>' : '<div style="width:34px"></div>') +
+        '<div class="chev" style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;flex-shrink:0">' + (isOpen ? '▲' : '▼') + '</div>' +
       '</div>';
     const cards = (p.alts || []).map((a) => sourceCard(p, a)).join('');
-    const expand = (isOpen && cards) ? '<div style="border-top:1px solid #22262b;padding:14px 17px 16px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076;margin:0 0 10px">SOURCES FOUND</div><div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div></div>' : '';
+    const addForm =
+      '<div class="addsrc" style="margin-top:' + (cards ? '12' : '2') + 'px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<input class="addurl" placeholder="Paste a product URL to add your own source…" style="flex:1;min-width:240px;box-sizing:border-box;background:#0f1113;border:1px solid #23272c;border-radius:9px;color:#e9ebed;font-size:12.5px;padding:9px 12px;outline:none">' +
+        '<div class="addbtn" style="padding:9px 16px;border-radius:9px;background:#ff5a2c;color:#0d0e10;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">＋ Add source</div>' +
+        '<div class="addmsg" style="width:100%"></div>' +
+      '</div>';
+    const expand = isOpen
+      ? '<div style="border-top:1px solid #22262b;padding:14px 17px 16px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076;margin:0 0 10px">SOURCES FOUND</div>' +
+        (cards ? '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div>' : '<div style="font-size:12.5px;color:#6b7076;padding:2px 0 4px">No sources yet — paste a product URL below to add one.</div>') +
+        addForm + '</div>'
+      : '';
     return '<div data-id="' + PH.esc(p.id) + '" style="background:#131518;border:1px solid ' + wrapBorder + ';border-radius:14px;overflow:hidden">' + parent + expand + '</div>';
   }
 
@@ -332,11 +367,18 @@ document.addEventListener('DOMContentLoaded', async function () {
       wrap.querySelectorAll('[data-key]').forEach((box) => {
         const key = box.dataset.key, href = box.dataset.href;
         const alt = (p.alts || []).find((a) => (a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''))) === key);
-        const up = box.querySelector('.jup'), down = box.querySelector('.jdown'), sv = box.querySelector('.jsave');
+        const up = box.querySelector('.jup'), down = box.querySelector('.jdown'), sv = box.querySelector('.jsave'), dl = box.querySelector('.jdel');
         if (up) up.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] > 0) ? 0 : 1); });
         if (down) down.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] < 0) ? 0 : -1); });
-        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url: href, title: (alt ? alt.label + ' — ' : '') + (p.desc || ''), price: alt ? alt.price : null, seller: alt ? alt.label : '', section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(href) ? 'Saved to watchlist' : 'Removed from watchlist'); });
+        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url: href, title: (alt ? alt.label + ' — ' : '') + (p.desc || ''), price: alt ? alt.price : null, seller: alt ? alt.label : '', image: alt ? alt.image : null, section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(href) ? 'Saved to watchlist' : 'Removed from watchlist'); });
+        if (dl) dl.addEventListener('click', (e) => { stop(e); delSource(p, dl.dataset.del); });
       });
+      const add = wrap.querySelector('.addsrc');
+      if (add) {
+        const inp = add.querySelector('.addurl'), btn = add.querySelector('.addbtn'), msg = add.querySelector('.addmsg');
+        btn.addEventListener('click', (e) => { stop(e); addSource(p, inp.value, msg, btn); });
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addSource(p, inp.value, msg, btn); } });
+      }
     });
   }
   async function voteSrc(p, key, value) {
