@@ -2,12 +2,12 @@ import { sql, ensureSchema, readBody, uid } from './_db.js';
 import { requireAuth } from './_auth.js';
 
 /* Manual "User" sources for a parts-list project.
- * POST   { projectId, partId, url }      -> fetch the URL, derive seller/price/currency/image/kind,
- *                                           store it under config.manualSources[partId], recompute
+ * POST   { projectId, partId, url }      -> derive seller/price/currency/image/kind from the URL,
+ *                                           store under config.manualSources[partId], recompute
  *                                           that project's results + totals, return { results, totals }.
  * DELETE { projectId, partId, id }        -> remove a stored manual source, recompute, return same.
  * Manual sources persist across re-hunts (run-list.js merges them back in) and are tagged provider:'user'.
- * Page fetch escalates: direct -> Browserless /unblock (residential, bypasses bot detection/CAPTCHA) -> /content. */
+ * Derivation: Shopify /products/<handle>.json fast-path -> direct fetch -> Browserless /unblock (residential) -> /content. */
 
 /* ---------- shared price/fx/kind helpers (kept in sync with run-list.js) ---------- */
 function parseAmount(v) {
@@ -89,6 +89,27 @@ function sellerFromUrl(u) { try { const h = new URL(u).hostname.replace(/^www\./
 function pick(re, html) { const m = html.match(re); return m ? String(m[1]).trim() : null; }
 function decode(s) { return String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim(); }
 
+/* Shopify fast-path: /products/<handle> stores expose <origin>/products/<handle>.json with the
+ * authoritative DECIMAL price + currency + images — avoids the pence/cents traps in scraped HTML. */
+async function deriveShopify(url) {
+  let u; try { u = new URL(url); } catch (e) { return null; }
+  const m = u.pathname.match(/\/products\/([^\/?#]+)/);
+  if (!m) return null;
+  const jsonUrl = u.origin + '/products/' + m[1].replace(/\.json$/i, '') + '.json';
+  try {
+    const c = new AbortController(); const t = setTimeout(() => c.abort(), 10000);
+    const r = await fetch(jsonUrl, { headers: { accept: 'application/json', 'user-agent': 'Mozilla/5.0' }, signal: c.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const p = d && d.product; if (!p || !Array.isArray(p.variants) || !p.variants.length) return null;
+    const v = p.variants.find((x) => x && x.price != null && x.price !== '') || p.variants[0];
+    if (!v || v.price == null || v.price === '') return null;
+    const image = (p.image && p.image.src) || (Array.isArray(p.images) && p.images[0] && p.images[0].src) || null;
+    return { title: p.title || null, price: v.price, currency: v.price_currency || null, image };
+  } catch (e) { return null; }
+}
+
 async function getHtml(url) {
   // 1. Direct fetch — fast; works for un-protected sites.
   try {
@@ -149,7 +170,8 @@ function extract(html) {
       }
     }
   }
-  if (price == null) price = pick(/property=["']product:price:amount["'][^>]*content=["']([^"']+)["']/i, html) || pick(/itemprop=["']price["'][^>]*content=["']([^"']+)["']/i, html) || pick(/["']price["']\s*:\s*["']?([0-9][0-9.,\s]*)/i, html);
+  // Meta fallbacks. The loose JSON "price" match REQUIRES a decimal so it can't grab a cents integer.
+  if (price == null) price = pick(/property=["']product:price:amount["'][^>]*content=["']([^"']+)["']/i, html) || pick(/itemprop=["']price["'][^>]*content=["']([^"']+)["']/i, html) || pick(/["']price["']\s*:\s*["']?([0-9]{1,7}[.,][0-9]{2})\b/i, html);
   if (!currency) currency = pick(/property=["']product:price:currency["'][^>]*content=["']([^"']+)["']/i, html) || pick(/itemprop=["']priceCurrency["'][^>]*content=["']([^"']+)["']/i, html) || pick(/["']priceCurrency["']\s*:\s*["']([A-Z]{3})["']/i, html);
   if (!title) title = pick(/property=["']og:title["'][^>]*content=["']([^"']+)["']/i, html) || pick(/<title[^>]*>([^<]+)<\/title>/i, html);
   if (!image) image = pick(/property=["']og:image["'][^>]*content=["']([^"']+)["']/i, html);
@@ -188,8 +210,9 @@ export default async function handler(req, res) {
       const seller = sellerFromUrl(url);
       if (!seller) return res.status(400).json({ error: 'That does not look like a valid URL.' });
       let derived = { title: null, price: null, currency: null, image: null };
-      const html = await getHtml(url);
-      if (html) { try { derived = extract(html); } catch (e) { /* keep blanks */ } }
+      const shop = await deriveShopify(url);
+      if (shop && shop.price != null) derived = shop;
+      else { const html = await getHtml(url); if (html) { try { derived = extract(html); } catch (e) { /* keep blanks */ } } }
       const manual = {
         id: uid(),
         url,
