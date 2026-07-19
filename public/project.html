@@ -123,6 +123,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const n = Object.keys(state.feedback).length;
     $('learnPill').innerHTML = 'Learning — <span style="color:#58c98a;font-weight:600">' + n + ' signal' + (n === 1 ? '' : 's') + '</span> from your feedback';
   }
+  function learn() { const n = Object.keys(state.feedback).length; $('learnPill').innerHTML = 'Learning — <span style="color:#58c98a;font-weight:600">' + n + ' signal' + (n === 1 ? '' : 's') + '</span> from your feedback'; }
 
   function render() {
     const c = state.project.config || {};

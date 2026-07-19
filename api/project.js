@@ -19,54 +19,56 @@ export default async function handler(req, res) {
       let project = rows[0];
       let config = project.config || {};
 
-      // Only try to expand if completely empty (safe try/catch)
-      if ((!config.queries || config.queries.length === 0) && project.goal) {
+      if ((!config.queries || config.queries.length === 0) && project.goal && config.kind !== 'list') {
         try {
           const expanded = await expandGoal(project.goal);
           config = {
+            ...config,
             categories: Array.isArray(expanded.categories) ? expanded.categories : [],
             queries: Array.isArray(expanded.queries) ? expanded.queries : [],
             rules: Array.isArray(expanded.rules) ? expanded.rules : []
           };
           await sql`UPDATE projects SET config = ${JSON.stringify(config)}::jsonb WHERE id = ${id}`;
           project.config = config;
-          console.log('Auto-expanded config for project', id);
         } catch (e) {
-          console.error('Auto-expand failed (continuing with empty config):', e.message);
-          // Do NOT fail the whole request
+          console.error('Auto-expand failed (continuing):', e.message);
         }
       }
 
-      // Load listings and feedback
-      const { rows: listings } = await sql`
-        SELECT * FROM listings 
-        WHERE project_id = ${id} 
-        ORDER BY section, created_at DESC
-      `;
-      const { rows: feedback } = await sql`
-        SELECT * FROM feedback WHERE project_id = ${id}
-      `;
+      const { rows: listings } = await sql`SELECT * FROM listings WHERE project_id = ${id} ORDER BY section, created_at DESC`;
+      const { rows: feedback } = await sql`SELECT * FROM feedback WHERE project_id = ${id}`;
 
-      return res.status(200).json({
-        project,
-        listings: listings || [],
-        feedback: feedback || []
-      });
+      return res.status(200).json({ project, listings: listings || [], feedback: feedback || [] });
     }
 
     if (req.method === 'PATCH') {
       const body = await readBody(req);
       if (!id) return res.status(400).json({ error: 'id required' });
 
-      if (body.config) {
-        await sql`UPDATE projects SET config = ${JSON.stringify(body.config)}::jsonb WHERE id = ${id}`;
+      if (body.name) await sql`UPDATE projects SET name = ${body.name} WHERE id = ${id}`;
+      if (body.goal) await sql`UPDATE projects SET goal = ${body.goal} WHERE id = ${id}`;
+
+      // Re-draft: regenerate queries/rules/categories from the (possibly edited) goal,
+      // preserving the project's filters. Used by "Edit search" (Set your target).
+      let config = body.config || null;
+      if (body.reexpand && body.goal) {
+        try {
+          const ex = await expandGoal(body.goal);
+          const { rows: cur } = await sql`SELECT config FROM projects WHERE id = ${id}`;
+          const prev = (cur[0] && cur[0].config) || {};
+          config = {
+            ...prev,
+            categories: Array.isArray(ex.categories) ? ex.categories : (prev.categories || []),
+            queries: Array.isArray(ex.queries) ? ex.queries : (prev.queries || []),
+            rules: Array.isArray(ex.rules) ? ex.rules : (prev.rules || []),
+            filters: (body.config && body.config.filters) || prev.filters || {}
+          };
+        } catch (e) {
+          console.error('re-expand failed:', e.message);
+        }
       }
-      if (body.name) {
-        await sql`UPDATE projects SET name = ${body.name} WHERE id = ${id}`;
-      }
-      if (body.goal) {
-        await sql`UPDATE projects SET goal = ${body.goal} WHERE id = ${id}`;
-      }
+
+      if (config) await sql`UPDATE projects SET config = ${JSON.stringify(config)}::jsonb WHERE id = ${id}`;
 
       const { rows } = await sql`SELECT * FROM projects WHERE id = ${id}`;
       return res.status(200).json({ project: rows[0] });
