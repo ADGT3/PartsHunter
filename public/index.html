@@ -119,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const $ = (i) => document.getElementById(i);
   const grid = $('grid'), projSec = $('projects'), newSec = $('newHunt');
   const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString('en-AU');
-  const dsrc = { oem: false, aftermarket: false, salvage: false };
+  const dsrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
   const lsrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
 
   function showNew(v) { newSec.style.display = v ? 'block' : 'none'; projSec.style.display = v ? 'none' : 'block'; if (v) $('pname').focus(); window.scrollTo(0, 0); }
@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }).join('');
     $(container).querySelectorAll('.chp').forEach((el) => el.addEventListener('click', () => { state[el.dataset.k] = !state[el.dataset.k]; chips(container, state, arr); }));
   }
-  chips('dSrc', dsrc, SRC); chips('lSrc', lsrc, LSRC);
+  chips('dSrc', dsrc, LSRC); chips('lSrc', lsrc, LSRC);
 
   function refreshCreate() { const can = $('pname').value.trim() && $('pgoal').value.trim(); const b = $('createBtn'); b.style.background = can ? '#ff5a2c' : '#26292e'; b.style.color = can ? '#0d0e10' : '#6b7076'; b.dataset.can = can ? '1' : ''; }
   $('pname').addEventListener('input', refreshCreate);
@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('createBtn').addEventListener('click', async () => {
     if (!$('createBtn').dataset.can) return;
     const name = $('pname').value.trim(), goal = $('pgoal').value.trim();
-    const filters = { oem: dsrc.oem, aftermarket: dsrc.aftermarket, salvage: dsrc.salvage, country: $('fCountry').value };
+    const filters = { oem_new: dsrc.oem_new, oem_used: dsrc.oem_used, aftermarket: dsrc.aftermarket, salvage: dsrc.salvage, country: $('fCountry').value };
     $('createMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search…</div>';
     try { const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters } }); location.href = 'draft.html?id=' + encodeURIComponent(project.id) + '&new=1'; }
     catch (e) { $('createMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }

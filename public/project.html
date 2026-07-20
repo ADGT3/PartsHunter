@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function () {
   PH.updateWatchCount();
   const $ = (i) => document.getElementById(i);
   let state = { project: null, listings: [], feedback: {}, category: 'All', sort: 'best' };
-  const src = { oem: false, aftermarket: false, salvage: false };
+  const src = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
 
   const scoreStyle = (sc) => "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" +
@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return best;
   }
 
-  const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
+  const SRC = [['oem_new', 'OEM parts (New)'], ['oem_used', 'OEM parts (Used)'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
   function drawSrc() {
     $('eSrc').innerHTML = SRC.map(([k, label]) => {
       const on = src[k];
@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function openEdit() {
     const c = state.project.config || {}, f = c.filters || {};
     $('eName').value = state.project.name || ''; $('eGoal').value = state.project.goal || '';
-    src.oem = !!f.oem; src.aftermarket = !!f.aftermarket; src.salvage = !!f.salvage; drawSrc();
+    src.oem_new = !!(f.oem_new || f.oem); src.oem_used = !!(f.oem_used || f.oem); src.aftermarket = !!f.aftermarket; src.salvage = !!f.salvage; drawSrc();
     $('eCountry').value = f.country || 'all';
     $('editPanel').style.display = 'block'; window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -149,7 +149,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('updateBtn').addEventListener('click', async () => {
     const name = $('eName').value.trim(), goal = $('eGoal').value.trim();
     if (!name || !goal) { $('editMsg').innerHTML = '<div class="banner err">Name and goal are required.</div>'; return; }
-    const filters = { oem: src.oem, aftermarket: src.aftermarket, salvage: src.salvage, country: $('eCountry').value };
+    const filters = { oem_new: src.oem_new, oem_used: src.oem_used, aftermarket: src.aftermarket, salvage: src.salvage, country: $('eCountry').value };
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Re-drafting and re-running… this can take a couple of minutes.</div>';
     try {
       await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, goal, config: { filters }, reexpand: true } });
