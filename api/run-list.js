@@ -2,11 +2,13 @@ import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 import { deriveListing, sellerFromUrl } from './_derive.js';
 
-/* Parts-list hunt engine. For every line, use Claude web_search to find MULTIPLE real online
- * sellers + prices. Prices parsed robustly (European formats), converted to AUD. Hunted sources
- * are tagged provider:'claude'; user-added manual sources (provider:'user') are merged back in.
- * Price recovery: for parts the search LOCATED (returned a URL) but couldn't PRICE, fetch the page
- * via the shared deriveListing() to read the price instead of dropping the source. */
+/* Parts-list hunt engine. Source kinds: oem_new | oem_used | aftermarket | salvage.
+ *   oem_new  = brand-new genuine OEM part
+ *   oem_used = genuine used/second-hand part sold as a part (used-parts dealers, eBay listings, breakers)
+ *   aftermarket = non-genuine / replica / pattern part
+ *   salvage  = the part is on a whole salvage/wrecked vehicle for sale (Copart, IAAI, Manheim, Pickles)
+ * Hunted sources tagged provider:'claude'; user manual sources (provider:'user') merged back in.
+ * Price recovery: parts LOCATED (URL) but not PRICED get their page fetched via deriveListing(). */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -14,8 +16,8 @@ const MODEL = process.env.LIST_MODEL || process.env.SEARCH_MODEL || 'claude-sonn
 const CHUNK = Number(process.env.LIST_CHUNK || 3);
 const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 6);
 const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 260000);
-const PRICE_FETCHES = Number(process.env.LIST_PRICE_FETCHES || 8);   // cap page-fetches for recovery
-const RECOVER_HEADROOM_MS = 30000;                                   // stop recovery this long before budget
+const PRICE_FETCHES = Number(process.env.LIST_PRICE_FETCHES || 8);
+const RECOVER_HEADROOM_MS = 30000;
 const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 6) };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -57,12 +59,13 @@ async function fxToAud() {
   };
 }
 
+/* Normalise a source's kind to one of the four buckets. */
 function normKind(k) {
   const s = String(k || '').toLowerCase();
-  if (/salvage|donor|wreck|used|second|pull/.test(s)) return 'salvage';
+  if (/copart|iaai|manheim|pickles|salvage|wreck|whole[\s_-]?(car|vehicle)|donor vehicle/.test(s)) return 'salvage';
+  if (/oem[\s_-]?used|used[\s_-]?oem|second[- ]?hand|pre-?owned|breaker|dismantl|\bused\b|pull/.test(s)) return 'oem_used';
   if (/after|repro|replica|copy|non-?genuine|pattern/.test(s)) return 'aftermarket';
-  if (/oem|genuine|original|dealer/.test(s)) return 'oem';
-  return 'oem';
+  return 'oem_new';
 }
 
 const alnum = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -80,7 +83,6 @@ function matchUrl(label, urls) {
   return cand[0] || null;
 }
 
-/* Merge extra sources (manual 'user' adds, or recovered 'claude' sources) into a computed part. */
 function buildManualAlts(list, toAud) {
   return (list || []).map((m) => {
     const aud = toAud(parseAmount(m.price), m.currency);
@@ -106,16 +108,17 @@ async function findChunk(parts, wants) {
   if (!key) return {};
   const constraint = wants.length
     ? 'ONLY include sources of these kinds: ' + wants.join(', ') + '. Ignore any other kind.'
-    : 'Include OEM/genuine, aftermarket and salvage/used sources.';
+    : 'Include all four kinds where available.';
   const system = [
     'You find CURRENT online prices for specific car parts by part number.',
     'For EACH part number given, run a web_search for that exact part number and read the EXACT displayed price. List AS MANY distinct sellers as your results show that stock it — aim for 2 to 4 sources per part so the buyer can compare and find the cheapest. Do NOT stop after the first seller.',
     'Return ONLY a JSON object mapping the exact part number to an array of sources (one entry per distinct seller).',
-    'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": the product page URL if you have it (the deep link to that exact part, not a category/search page; otherwise omit it), "kind": "oem"|"aftermarket"|"salvage"}.',
-    'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Set "currency" to the currency actually shown; do not convert.',
+    'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": product page URL if you have it (the deep link to that exact part, not a category/search page; otherwise omit it), "kind": "oem_new"|"oem_used"|"aftermarket"|"salvage"}.',
+    'KIND definitions: "oem_new" = brand-new genuine OEM part; "oem_used" = a genuine USED / second-hand part sold as a part (used-parts dealers, eBay part listings, breakers / dismantlers); "aftermarket" = non-genuine / replica / pattern part; "salvage" = the part is on a WHOLE salvage/wrecked vehicle for sale (Copart, IAAI, Manheim, Pickles) that carries this exact part — the same part often fits several vehicles, so a matching donor vehicle counts.',
+    'PRICE RULES: give the exact price shown as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR. Set "currency" to the currency actually shown; do not convert.',
     'If you find a seller that clearly stocks the part but you CANNOT read a price (price behind vehicle selection, "POA", login, etc.), STILL include it with its product "url" and omit "price" — do not discard it.',
     constraint,
-    'Include EVERY distinct real seller you find. Check SEVERAL catalogues, not just one — e.g. teile.com, eurospares, design911, oempartsonline, pelican parts, ecs tuning, fcp euro, suncoast, autohaus, plus eBay listings. If nothing is found for a part, use an empty array for that part number.'
+    'Include EVERY distinct real seller you find. Check SEVERAL catalogues — e.g. teile.com, eurospares, design911, oempartsonline, pelican parts, ecs tuning, fcp euro, suncoast, autohaus, eBay, plus used-parts breakers and salvage auctions. If nothing is found for a part, use an empty array for that part number.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
@@ -184,7 +187,11 @@ export default async function handler(req, res) {
 
     const estCur = cfg.currency || 'AUD';
     const f = cfg.filters || {};
-    const wants = []; if (f.oem) wants.push('oem'); if (f.aftermarket) wants.push('aftermarket'); if (f.salvage) wants.push('salvage');
+    const wants = [];
+    if (f.oem_new || f.oem) wants.push('oem_new');
+    if (f.oem_used || f.oem) wants.push('oem_used');
+    if (f.aftermarket) wants.push('aftermarket');
+    if (f.salvage) wants.push('salvage');
     const manualAll = (cfg.manualSources && typeof cfg.manualSources === 'object') ? cfg.manualSources : {};
 
     const toAud = await fxToAud();

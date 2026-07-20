@@ -98,11 +98,14 @@ function extract(html) {
   return { title: decode(title), price: price, currency: currency, image: image };
 }
 
+/* Classify into: oem_new (new genuine) | oem_used (genuine used/second-hand part) |
+ * aftermarket (non-genuine/replica) | salvage (part off a whole wrecked/donor vehicle). */
 export function guessKind(title, url) {
   const hay = ((title || '') + ' ' + (url || '')).toLowerCase();
-  if (/salvage|wreck|donor|pull|second-?hand|\bused\b/.test(hay)) return 'salvage';
+  if (/copart|iaai|manheim|pickles|salvage|wreck|whole (car|vehicle)|donor vehicle/.test(hay)) return 'salvage';
+  if (/second[- ]?hand|pre-?owned|breaker|dismantl|\bused\b|used-?part|salvage part/.test(hay)) return 'oem_used';
   if (/aftermarket|replica|repro|non-?genuine|pattern/.test(hay)) return 'aftermarket';
-  return 'oem';
+  return 'oem_new';
 }
 
 export async function deriveListing(url, opts) {

@@ -7,7 +7,7 @@ import { deriveListing, sellerFromUrl, guessKind } from './_derive.js';
  *                                       store under config.manualSources[partId], recompute
  *                                       results + totals, return { results, totals }.
  * DELETE { projectId, partId, id }    -> remove a stored manual source, recompute, return same.
- * Manual sources persist across re-hunts (run-list.js merges them back in) and are tagged provider:'user'. */
+ * Kinds: oem_new | oem_used | aftermarket | salvage. Manual sources persist across re-hunts. */
 
 function parseAmount(v) {
   if (typeof v === 'number') return isFinite(v) ? v : null;
@@ -47,10 +47,10 @@ async function fxToAud() {
 }
 function normKind(k) {
   const s = String(k || '').toLowerCase();
-  if (/salvage|donor|wreck|used|second|pull/.test(s)) return 'salvage';
+  if (/copart|iaai|manheim|pickles|salvage|wreck|whole[\s_-]?(car|vehicle)|donor vehicle/.test(s)) return 'salvage';
+  if (/oem[\s_-]?used|used[\s_-]?oem|second[- ]?hand|pre-?owned|breaker|dismantl|\bused\b|pull/.test(s)) return 'oem_used';
   if (/after|repro|replica|copy|non-?genuine|pattern/.test(s)) return 'aftermarket';
-  if (/oem|genuine|original|dealer/.test(s)) return 'oem';
-  return 'oem';
+  return 'oem_new';
 }
 function buildManualAlts(list, toAud) {
   return (list || []).map((m) => {

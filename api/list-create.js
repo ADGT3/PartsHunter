@@ -2,7 +2,7 @@ import { sql, ensureSchema, readBody, uid } from './_db.js';
 import { requireAuth } from './_auth.js';
 
 /* Create a "parts-list" project from an uploaded/parsed estimate.
- * POST { name, currency, sources:{oem,aftermarket,salvage}, lines:[{desc,pn,qty,est}] }
+ * POST { name, currency, sources:{oem_new,oem_used,aftermarket,salvage}, lines:[{desc,pn,qty,est}] }
  * Stores everything in the project's config jsonb (kind: 'list'). */
 
 export default async function handler(req, res) {
@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     const name = (body.name || 'Parts list').toString().slice(0, 200);
     const currency = (body.currency || 'AUD').toString().toUpperCase().slice(0, 6);
     const s = body.sources || body.filters || {};
-    const filters = { oem: !!s.oem, aftermarket: !!s.aftermarket, salvage: !!s.salvage };
+    const filters = { oem_new: !!(s.oem_new || s.oem), oem_used: !!(s.oem_used || s.oem), aftermarket: !!s.aftermarket, salvage: !!s.salvage };
     const lines = Array.isArray(body.lines) ? body.lines : [];
     if (!lines.length) return res.status(400).json({ error: 'No parts lines provided.' });
 
