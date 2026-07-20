@@ -106,14 +106,15 @@ document.addEventListener('DOMContentLoaded', async function () {
   const imgUrl = (u) => { if (!u) return ''; u = String(u).trim(); return u.slice(0, 2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
   const money = (n) => n == null ? '—' : '$' + Math.round(Number(n)).toLocaleString('en-AU');
   const STAT = { saving: { label: 'SAVING', color: '#58c98a', bg: 'rgba(88,201,138,.13)' }, nocheaper: { label: 'OEM BEST', color: '#8b9096', bg: 'rgba(139,144,150,.12)' }, notfound: { label: 'NO MATCH', color: '#e0a53c', bg: 'rgba(224,165,60,.13)' } };
-  const KIND = { oem: 'OEM', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
+  const KIND = { oem_new: 'OEM NEW', oem_used: 'OEM USED', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
+  const NK = (k) => k === 'oem' ? 'oem_new' : (k || '');
   const voteStyle = (on, kind) => { const b = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .12s;"; if (on && kind === 'up') return b + "background:rgba(88,201,138,.16);border:1px solid #58c98a;color:#58c98a;"; if (on && kind === 'down') return b + "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;"; return b + "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;"; };
   const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
   const delStyle = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;transition:all .12s;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;";
   const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
   let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {}, editLines = [];
-  const esrc = { oem: false, aftermarket: false, salvage: false };
-  const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
+  const esrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
+  const SRC = [['oem_new', 'OEM parts (New)'], ['oem_used', 'OEM parts (Used)'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
   const keyOf = (p, a) => a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''));
   const hrefOf = (p, a) => a.url || ('https://www.google.com/search?q=' + encodeURIComponent(((p.pn || p.desc || '') + ' ' + (a.label || '')).trim()));
@@ -214,7 +215,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (!data) return;
     const f = data.filters || {};
     $('eName').value = data.project.name || '';
-    esrc.oem = !!f.oem; esrc.aftermarket = !!f.aftermarket; esrc.salvage = !!f.salvage; drawESrc();
+    esrc.oem_new = !!(f.oem_new || f.oem); esrc.oem_used = !!(f.oem_used || f.oem); esrc.aftermarket = !!f.aftermarket; esrc.salvage = !!f.salvage; drawESrc();
     $('eCur').value = data.currency || 'AUD';
     editLines = (data.partsList || []).map((l) => ({ desc: l.desc, pn: l.pn, qty: l.qty, est: l.est }));
     renderEditList();
@@ -229,7 +230,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (!name) { $('editMsg').innerHTML = '<div class="banner err">Name is required.</div>'; return; }
     const lines = editLines.map((l, i) => ({ id: 'L' + (i + 1), desc: (l.desc || '').toString().trim(), pn: (l.pn || '').toString().trim(), qty: numOrNull(l.qty), est: numOrNull(l.est) })).filter((l) => l.desc || l.pn);
     if (!lines.length) { $('editMsg').innerHTML = '<div class="banner err">Add at least one part (a description or part number).</div>'; return; }
-    const filters = { oem: esrc.oem, aftermarket: esrc.aftermarket, salvage: esrc.salvage };
+    const filters = { oem_new: esrc.oem_new, oem_used: esrc.oem_used, aftermarket: esrc.aftermarket, salvage: esrc.salvage };
     const config = { kind: 'list', currency: $('eCur').value, filters, partsList: lines, results: null, totals: null };
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Saving and re-hunting ' + lines.length + ' parts — this can take a couple of minutes.</div>';
     try {
@@ -270,7 +271,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
   function sourceCard(p, a) {
     const key = keyOf(p, a), href = hrefOf(p, a), v = feedback[key] || 0, saved = PH.watch.has(href);
-    const bLabel = a.best ? 'BEST' : (KIND[a.kind] || 'ALT');
+    const bLabel = a.best ? 'BEST' : (KIND[NK(a.kind)] || 'ALT');
     const bStyle = a.best ? badge('BEST', '#58c98a', 'rgba(88,201,138,.13)') : badge(bLabel, '#8b9096', 'rgba(139,144,150,.12)');
     const prov = a.provider === 'user' ? ['User', '#ff6a3d', 'rgba(255,90,44,.14)'] : ['Claude', '#8ab4f8', 'rgba(138,180,248,.12)'];
     const provBadge = '<span style="' + badge(prov[0], prov[1], prov[2]) + '">' + prov[0] + '</span>';
@@ -339,7 +340,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const t = data.totals || { estTotal: 0, foundTotal: 0, saveTotal: 0 };
     const pct = t.estTotal ? Math.round(t.saveTotal / t.estTotal * 100) : 0, r = data.results;
     const sc = { all: r.length, saving: r.filter((x) => x.status === 'saving').length, nocheaper: r.filter((x) => x.status === 'nocheaper').length, notfound: r.filter((x) => x.status === 'notfound').length };
-    const kc = { all: r.length, oem: r.filter((x) => x.kind === 'oem').length, aftermarket: r.filter((x) => x.kind === 'aftermarket').length, salvage: r.filter((x) => x.kind === 'salvage').length };
+    const kc = { all: r.length, oem_new: r.filter((x) => NK(x.kind) === 'oem_new').length, oem_used: r.filter((x) => NK(x.kind) === 'oem_used').length, aftermarket: r.filter((x) => x.kind === 'aftermarket').length, salvage: r.filter((x) => x.kind === 'salvage').length };
     body.innerHTML =
       '<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="btn grey" id="rehunt">&#8635; Re-hunt all parts</button></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">' +
@@ -348,7 +349,7 @@ document.addEventListener('DOMContentLoaded', async function () {
         '<div style="padding:18px 20px;border:1px solid rgba(88,201,138,.35);border-radius:13px;background:linear-gradient(120deg,rgba(88,201,138,.12),rgba(88,201,138,.02))"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#58c98a;margin-bottom:8px">POTENTIAL SAVING</div><div style="display:flex;align-items:baseline;gap:9px"><div style="font-family:Archivo,sans-serif;font-weight:800;font-size:27px;color:#58c98a">' + money(t.saveTotal) + '</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:13px;color:#58c98a">−' + pct + '%</div></div></div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Status</span><span id="schips">' + chip('s', 'all', sfilter, 'All', sc.all) + chip('s', 'saving', sfilter, 'Savings', sc.saving) + chip('s', 'nocheaper', sfilter, 'OEM best', sc.nocheaper) + chip('s', 'notfound', sfilter, 'No match', sc.notfound) + '</span></div>' +
-      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem', kfilter, 'OEM', kc.oem) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span><div style="flex:1"></div><span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#6b7076">Rate results to sharpen the next run &#8594;</span></div>' +
+      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem_new', kfilter, 'OEM New', kc.oem_new) + chip('k', 'oem_used', kfilter, 'OEM Used', kc.oem_used) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span><div style="flex:1"></div><span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#6b7076">Rate results to sharpen the next run &#8594;</span></div>' +
       '<div id="rows" style="display:flex;flex-direction:column;gap:12px"></div>';
     const rh = $('rehunt'); if (rh) rh.addEventListener('click', runHunt);
     document.querySelectorAll('#schips .schip').forEach((el) => el.addEventListener('click', () => { sfilter = el.dataset.v; render(); }));
@@ -357,7 +358,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   }
 
   function drawRows() {
-    const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || p.kind === kfilter));
+    const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || NK(p.kind) === kfilter));
     const el = $('rows');
     el.innerHTML = shown.map(rowHtml).join('') || '<div class="banner">Nothing in this filter.</div>';
     el.querySelectorAll('[data-id]').forEach((wrap) => {

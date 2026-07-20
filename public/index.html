@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const grid = $('grid'), projSec = $('projects'), newSec = $('newHunt');
   const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString('en-AU');
   const dsrc = { oem: false, aftermarket: false, salvage: false };
-  const lsrc = { oem: false, aftermarket: false, salvage: false };
+  const lsrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
 
   function showNew(v) { newSec.style.display = v ? 'block' : 'none'; projSec.style.display = v ? 'none' : 'block'; if (v) $('pname').focus(); window.scrollTo(0, 0); }
   $('newBtn').addEventListener('click', () => showNew(true));
@@ -136,17 +136,18 @@ document.addEventListener('DOMContentLoaded', function () {
   }));
 
   const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
-  function chips(container, state) {
-    $(container).innerHTML = SRC.map(([k, label]) => {
+  const LSRC = [['oem_new', 'OEM parts (New)'], ['oem_used', 'OEM parts (Used)'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
+  function chips(container, state, arr) {
+    $(container).innerHTML = (arr || SRC).map(([k, label]) => {
       const on = state[k];
       const style = 'display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s;' +
         (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:#0f1113;border:1px solid #2a2e34;color:#8b9096;');
       const dot = 'width:8px;height:8px;border-radius:50%;background:' + (on ? '#ff5a2c' : '#3a4046') + ';';
       return '<div class="chp" data-k="' + k + '" style="' + style + '"><span style="' + dot + '"></span>' + label + '</div>';
     }).join('');
-    $(container).querySelectorAll('.chp').forEach((el) => el.addEventListener('click', () => { state[el.dataset.k] = !state[el.dataset.k]; chips(container, state); }));
+    $(container).querySelectorAll('.chp').forEach((el) => el.addEventListener('click', () => { state[el.dataset.k] = !state[el.dataset.k]; chips(container, state, arr); }));
   }
-  chips('dSrc', dsrc); chips('lSrc', lsrc);
+  chips('dSrc', dsrc, SRC); chips('lSrc', lsrc, LSRC);
 
   function refreshCreate() { const can = $('pname').value.trim() && $('pgoal').value.trim(); const b = $('createBtn'); b.style.background = can ? '#ff5a2c' : '#26292e'; b.style.color = can ? '#0d0e10' : '#6b7076'; b.dataset.can = can ? '1' : ''; }
   $('pname').addEventListener('input', refreshCreate);
@@ -234,7 +235,7 @@ document.addEventListener('DOMContentLoaded', function () {
   async function hunt() {
     const btn = $('huntBtn'); btn.style.pointerEvents = 'none'; btn.innerHTML = '<span class="spinner"></span> Creating hunt…';
     try {
-      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: $('lCur').value, sources: { oem: lsrc.oem, aftermarket: lsrc.aftermarket, salvage: lsrc.salvage }, lines: parsed.lines } });
+      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: $('lCur').value, sources: { oem_new: lsrc.oem_new, oem_used: lsrc.oem_used, aftermarket: lsrc.aftermarket, salvage: lsrc.salvage }, lines: parsed.lines } });
       location.href = 'list.html?id=' + encodeURIComponent(project.id) + '&run=1';
     } catch (e) { $('listMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; btn.style.pointerEvents = 'auto'; btn.textContent = 'Hunt all ' + parsed.lines.length + ' parts →'; }
   }
