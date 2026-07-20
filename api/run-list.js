@@ -1,10 +1,12 @@
 import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
+import { deriveListing, sellerFromUrl } from './_derive.js';
 
 /* Parts-list hunt engine. For every line, use Claude web_search to find MULTIPLE real online
- * sellers + prices (with product URL + kind) so the buyer can compare. Prices parsed robustly
- * (European formats), converted to AUD. Hunted sources are tagged provider:'claude'; any user-added
- * manual sources (config.manualSources, provider:'user') are merged back in every run so they persist. */
+ * sellers + prices. Prices parsed robustly (European formats), converted to AUD. Hunted sources
+ * are tagged provider:'claude'; user-added manual sources (provider:'user') are merged back in.
+ * Price recovery: for parts the search LOCATED (returned a URL) but couldn't PRICE, fetch the page
+ * via the shared deriveListing() to read the price instead of dropping the source. */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -12,6 +14,8 @@ const MODEL = process.env.LIST_MODEL || process.env.SEARCH_MODEL || 'claude-sonn
 const CHUNK = Number(process.env.LIST_CHUNK || 3);
 const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 6);
 const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 260000);
+const PRICE_FETCHES = Number(process.env.LIST_PRICE_FETCHES || 8);   // cap page-fetches for recovery
+const RECOVER_HEADROOM_MS = 30000;                                   // stop recovery this long before budget
 const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 6) };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -76,16 +80,16 @@ function matchUrl(label, urls) {
   return cand[0] || null;
 }
 
-/* Merge user-added manual sources (provider:'user') into a computed part result. */
+/* Merge extra sources (manual 'user' adds, or recovered 'claude' sources) into a computed part. */
 function buildManualAlts(list, toAud) {
   return (list || []).map((m) => {
     const aud = toAud(parseAmount(m.price), m.currency);
     return { label: (m.label || '') + (m.location ? ' · ' + m.location : ''), price: aud == null ? null : Math.round(aud), url: m.url || null, kind: normKind(m.kind), provider: 'user', manual: true, id: m.id, image: m.image || null };
   });
 }
-function mergePart(p, manual) {
+function mergePart(p, extra) {
   const hunted = (p.alts || []).filter((a) => a.provider !== 'user').map((a) => Object.assign({}, a, { best: false, provider: a.provider || 'claude' }));
-  const combined = hunted.concat(manual);
+  const combined = hunted.concat(extra);
   combined.sort((a, b) => (a.price == null ? Infinity : a.price) - (b.price == null ? Infinity : b.price));
   combined.forEach((a) => (a.best = false));
   const fp = combined.find((a) => a.price != null); if (fp) fp.best = true;
@@ -109,8 +113,9 @@ async function findChunk(parts, wants) {
     'Return ONLY a JSON object mapping the exact part number to an array of sources (one entry per distinct seller).',
     'Each source: {"label": seller, "location": country or "", "price": number, "currency": ISO code, "url": the product page URL if you have it (the deep link to that exact part, not a category/search page; otherwise omit it), "kind": "oem"|"aftermarket"|"salvage"}.',
     'PRICE RULES: give the exact price shown on the page as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR (dot=thousands, comma=decimal). Set "currency" to the currency actually shown; do not convert.',
+    'If you find a seller that clearly stocks the part but you CANNOT read a price (price behind vehicle selection, "POA", login, etc.), STILL include it with its product "url" and omit "price" — do not discard it.',
     constraint,
-    'Include EVERY distinct real seller you find with a listed price. Check SEVERAL catalogues, not just one — e.g. teile.com, eurospares, design911, oempartsonline, pelican parts, ecs tuning, fcp euro, suncoast, autohaus, plus eBay listings — many stock these. If nothing is found for a part, use an empty array for that part number.'
+    'Include EVERY distinct real seller you find. Check SEVERAL catalogues, not just one — e.g. teile.com, eurospares, design911, oempartsonline, pelican parts, ecs tuning, fcp euro, suncoast, autohaus, plus eBay listings. If nothing is found for a part, use an empty array for that part number.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
   let messages = [{ role: 'user', content: user }];
@@ -198,10 +203,17 @@ export default async function handler(req, res) {
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, chunks.length) }, () => worker()));
 
+    const recoverQueue = [];
     const results = parts.map((p) => {
-      let raw = (found[p.pn] || [])
-        .map((s) => ({ label: s && s.label || '', location: s && s.location || '', url: (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null, kind: normKind(s && s.kind), priceAud: toAud(parseAmount(s && s.price), s && s.currency) }))
-        .filter((s) => s.priceAud != null && s.priceAud > 0);
+      const srcs = found[p.pn] || [];
+      let raw = []; const unpriced = [];
+      for (const s of srcs) {
+        const url = (s && typeof s.url === 'string' && /^https?:\/\//i.test(s.url)) ? s.url : null;
+        const kind = normKind(s && s.kind);
+        const priceAud = toAud(parseAmount(s && s.price), s && s.currency);
+        if (priceAud != null && priceAud > 0) raw.push({ label: (s && s.label) || '', location: (s && s.location) || '', url, kind, priceAud });
+        else if (url) unpriced.push({ label: (s && s.label) || sellerFromUrl(url), url, kind, currency: s && s.currency });
+      }
       if (wants.length) raw = raw.filter((s) => wants.includes(s.kind));
 
       const seen = {}; const deduped = [];
@@ -224,8 +236,27 @@ export default async function handler(req, res) {
         else status = 'nocheaper';
       }
       const alts = raw.slice(0, 8).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind, provider: 'claude' }));
-      return { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
+      const part = { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
+      if (part.matches === 0 && unpriced.length) recoverQueue.push({ p: part, cands: unpriced.slice(0, 2) });
+      return part;
     });
+
+    // Price recovery: fetch a located-but-unpriced product page to read the price (best-effort, capped).
+    let fetches = 0;
+    for (const item of recoverQueue) {
+      if (fetches >= PRICE_FETCHES || (Date.now() - started) >= (BUDGET_MS - RECOVER_HEADROOM_MS)) break;
+      for (const cand of item.cands) {
+        if (fetches >= PRICE_FETCHES || (Date.now() - started) >= (BUDGET_MS - RECOVER_HEADROOM_MS)) break;
+        if (wants.length && !wants.includes(cand.kind)) continue;
+        let d = null; try { d = await deriveListing(cand.url, { heavy: false }); } catch (e) { d = null; }
+        fetches++;
+        const pa = d ? toAud(parseAmount(d.price), d.currency || cand.currency) : null;
+        if (pa != null && pa > 0) {
+          mergePart(item.p, [{ label: cand.label || sellerFromUrl(cand.url), price: Math.round(pa), url: cand.url, kind: cand.kind, provider: 'claude', best: false, image: (d && d.image) || null }]);
+          break;
+        }
+      }
+    }
 
     // Fold in any user-added manual sources so they survive the re-hunt.
     for (const p of results) {
