@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="/assets/app.js?v=8" defer></script>
 </head>
 <body>
@@ -29,8 +30,66 @@
 
 <main class="ps-main">
   <div onclick="location.href='/index.html'" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#9aa0a6;cursor:pointer;margin-bottom:20px">&#8592; All projects</div>
-  <div id="kicker" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#ff6a3d;margin-bottom:10px">// PARTS LIST HUNT</div>
-  <h1 id="pName" style="font-family:Archivo,sans-serif;font-weight:800;font-size:34px;margin:0 0 22px;letter-spacing:-.02em">Loading…</h1>
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:8px">
+    <div>
+      <div id="kicker" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.2em;color:#ff6a3d;margin-bottom:10px">// PARTS LIST HUNT</div>
+      <h1 id="pName" style="font-family:Archivo,sans-serif;font-weight:800;font-size:34px;margin:0;letter-spacing:-.02em">Loading…</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div id="editBtn" style="display:flex;align-items:center;gap:7px;padding:10px 16px;border-radius:10px;border:1px solid #2a2e34;color:#e9ebed;font-weight:600;font-size:13.5px;cursor:pointer">&#9998; Edit search</div>
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 15px;background:#131518;border:1px solid #23272c;border-radius:10px">
+        <span style="width:7px;height:7px;border-radius:50%;background:#58c98a;animation:ps-pulse 2s ease infinite"></span>
+        <span id="learnPill" style="font-size:13px;color:#c8cccf">Learning</span>
+      </div>
+    </div>
+  </div>
+  <div id="pGoal" class="muted" style="font-size:13.5px;max-width:640px;margin:2px 0 0"></div>
+
+  <!-- Edit search = upload a new file OR edit the list inline -->
+  <div id="editPanel" style="display:none;background:#131518;border:1px solid #23272c;border-radius:16px;padding:26px;margin:18px 0">
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">PROJECT NAME</label>
+    <input id="eName" style="width:100%;box-sizing:border-box;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:22px">
+
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES TO HUNT</label>
+    <div id="eSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:8px"></div>
+    <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Leave all off to hunt every kind, or pick some — e.g. OEM only, or OEM + Aftermarket.</div>
+
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">ESTIMATE CURRENCY</label>
+    <select id="eCur" style="width:100%;box-sizing:border-box;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:8px">
+      <option value="AUD">AUD — Australian dollar (default)</option>
+      <option value="USD">USD — US dollar</option>
+      <option value="EUR">EUR — Euro</option>
+      <option value="GBP">GBP — British pound</option>
+      <option value="ZAR">ZAR — South African rand</option>
+      <option value="NZD">NZD — New Zealand dollar</option>
+    </select>
+    <div style="font-size:12.5px;color:#6b7076;margin-bottom:22px">Your estimate is treated as AUD unless you pick another currency here — everything is converted to AUD for the comparison.</div>
+
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">PARTS LIST</label>
+    <div id="eDrop" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1.5px dashed #2f343a;border-radius:11px;cursor:pointer;color:#8b9096;margin-bottom:14px">
+      <span style="width:34px;height:34px;border-radius:8px;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">⭱</span>
+      <div style="flex:1;font-size:13px;line-height:1.45"><span style="color:#e9ebed;font-weight:600">Replace the list</span> — drop a .xlsx / .csv here, or click to browse. Or edit the lines below.</div>
+      <input type="file" id="eFile" accept=".xlsx,.csv" style="display:none">
+    </div>
+    <div id="eSummary" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b9096;margin:0 0 12px"></div>
+    <div style="border:1px solid #23272c;border-radius:11px;overflow:hidden;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 130px 46px 92px 30px;gap:8px;padding:10px 12px;background:#0f1113;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076"><span>DESCRIPTION</span><span>PART NUMBER</span><span>QTY</span><span style="text-align:right">ESTIMATE</span><span></span></div>
+      <div id="eRows" style="max-height:340px;overflow:auto"></div>
+    </div>
+    <div id="eAdd" style="display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:9px;border:1px dashed #2f343a;color:#8b9096;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:22px">＋ Add a line</div>
+
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:13px 15px;background:rgba(255,90,44,.08);border:1px solid rgba(255,90,44,.22);border-radius:10px;margin-bottom:24px">
+      <span style="color:#ff6a3d;font-size:15px;line-height:1.4">&#9670;</span>
+      <span style="font-size:13px;color:#c8cccf;line-height:1.5">Updating saves this list and re-hunts every part with these sources and currency.</span>
+    </div>
+    <div style="display:flex;gap:12px">
+      <div id="updateBtn" style="padding:13px 22px;border-radius:9px;font-weight:700;font-size:14.5px;cursor:pointer;background:#ff5a2c;color:#0d0e10">Update &amp; re-run &#8594;</div>
+      <div id="cancelEdit" style="padding:13px 22px;border-radius:9px;border:1px solid #2a2e34;color:#a3a8af;font-weight:600;font-size:14.5px;cursor:pointer">Cancel</div>
+    </div>
+    <div id="editMsg" style="margin-top:14px"></div>
+  </div>
+
   <div id="body"></div>
 </main>
 
@@ -43,106 +102,295 @@ document.addEventListener('DOMContentLoaded', async function () {
   PH.updateWatchCount();
   const id = PH.qs('id'), wantRun = PH.qs('run') === '1';
   const body = document.getElementById('body');
+  const $ = (i) => document.getElementById(i);
+  const imgUrl = (u) => { if (!u) return ''; u = String(u).trim(); return u.slice(0, 2) === '//' ? 'https:' + u : u.replace(/^http:\/\//i, 'https://'); };
   const money = (n) => n == null ? '—' : '$' + Math.round(Number(n)).toLocaleString('en-AU');
-  const META = {
-    saving: { label: 'SAVING', color: '#58c98a', bg: 'rgba(88,201,138,.13)' },
-    nocheaper: { label: 'OEM BEST', color: '#8b9096', bg: 'rgba(139,144,150,.12)' },
-    notfound: { label: 'NO MATCH', color: '#e0a53c', bg: 'rgba(224,165,60,.13)' }
-  };
-  let data = null, filter = 'all', open = {};
+  const STAT = { saving: { label: 'SAVING', color: '#58c98a', bg: 'rgba(88,201,138,.13)' }, nocheaper: { label: 'OEM BEST', color: '#8b9096', bg: 'rgba(139,144,150,.12)' }, notfound: { label: 'NO MATCH', color: '#e0a53c', bg: 'rgba(224,165,60,.13)' } };
+  const KIND = { oem: 'OEM', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
+  const voteStyle = (on, kind) => { const b = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .12s;"; if (on && kind === 'up') return b + "background:rgba(88,201,138,.16);border:1px solid #58c98a;color:#58c98a;"; if (on && kind === 'down') return b + "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;"; return b + "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;"; };
+  const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
+  const delStyle = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;transition:all .12s;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;";
+  const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
+  let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {}, editLines = [];
+  const esrc = { oem: false, aftermarket: false, salvage: false };
+  const SRC = [['oem', 'OEM parts'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
+  const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
+  const keyOf = (p, a) => a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''));
+  const hrefOf = (p, a) => a.url || ('https://www.google.com/search?q=' + encodeURIComponent(((p.pn || p.desc || '') + ' ' + (a.label || '')).trim()));
+  const numOrNull = (v) => { if (v == null || v === '') return null; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; };
 
-  async function loadData() { data = await PH.api('/api/list?id=' + encodeURIComponent(id)); }
+  function learn() {
+    const n = Object.keys(feedback).length;
+    $('learnPill').innerHTML = n
+      ? 'Learning &mdash; <span style="color:#58c98a;font-weight:600">' + n + ' signal' + (n === 1 ? '' : 's') + '</span> from your feedback'
+      : 'Learning';
+  }
 
+  /* ---------- Edit search: sources / currency / editable list / re-upload ---------- */
+  function drawESrc() {
+    $('eSrc').innerHTML = SRC.map(([k, label]) => {
+      const on = esrc[k];
+      const style = 'display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:9px;font-size:13.5px;font-weight:600;cursor:pointer;transition:all .15s;' +
+        (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:#0f1113;border:1px solid #2a2e34;color:#8b9096;');
+      const dot = 'width:8px;height:8px;border-radius:50%;background:' + (on ? '#ff5a2c' : '#3a4046') + ';';
+      return '<div class="echp" data-k="' + k + '" style="' + style + '"><span style="' + dot + '"></span>' + label + '</div>';
+    }).join('');
+    $('eSrc').querySelectorAll('.echp').forEach((el) => el.addEventListener('click', () => { esrc[el.dataset.k] = !esrc[el.dataset.k]; drawESrc(); }));
+  }
+  function editSummary() {
+    const cur = $('eCur').value;
+    const tot = editLines.reduce((n, l) => n + (numOrNull(l.est) || 0), 0);
+    const nParts = editLines.filter((l) => (l.desc && String(l.desc).trim()) || (l.pn && String(l.pn).trim())).length;
+    $('eSummary').textContent = nParts + ' part' + (nParts === 1 ? '' : 's') + ' · est. total ' + (tot ? cur + ' ' + Math.round(tot).toLocaleString('en-AU') : '—');
+  }
+  function renderEditList() {
+    const inp = "width:100%;box-sizing:border-box;background:#0f1113;border:1px solid #23272c;border-radius:7px;color:#e9ebed;font-size:12.5px;padding:7px 9px;outline:none;";
+    const mono = inp + "font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#c8cccf;";
+    $('eRows').innerHTML = editLines.map((l, i) =>
+      '<div class="erow" data-i="' + i + '" style="display:grid;grid-template-columns:1fr 130px 46px 92px 30px;gap:8px;padding:8px 12px;border-top:1px solid #1c1f23;align-items:center">' +
+        '<input class="ed" data-f="desc" value="' + PH.esc(l.desc == null ? '' : l.desc) + '" style="' + inp + '">' +
+        '<input class="ed" data-f="pn" value="' + PH.esc(l.pn == null ? '' : l.pn) + '" style="' + mono + '">' +
+        '<input class="ed" data-f="qty" value="' + PH.esc(l.qty == null ? '' : l.qty) + '" style="' + mono + 'text-align:center">' +
+        '<input class="ed" data-f="est" value="' + PH.esc(l.est == null ? '' : l.est) + '" style="' + mono + 'text-align:right">' +
+        '<div class="edel" title="Remove line" style="width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#8b9096;background:#0f1113;border:1px solid #2a2e34">×</div>' +
+      '</div>'
+    ).join('') || '<div style="padding:14px;color:#6b7076;font-size:13px">No lines yet — add one, or upload a file above.</div>';
+    $('eRows').querySelectorAll('.erow').forEach((row) => {
+      const i = +row.dataset.i;
+      row.querySelectorAll('.ed').forEach((el) => el.addEventListener('input', () => { editLines[i][el.dataset.f] = el.value; editSummary(); }));
+      const del = row.querySelector('.edel'); if (del) del.addEventListener('click', () => { editLines.splice(i, 1); renderEditList(); });
+    });
+    editSummary();
+  }
+
+  function num(v) { if (v == null || v === '') return null; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; }
+  function rowsToLines(rows) {
+    let hi = -1, col = {};
+    for (let i = 0; i < Math.min(rows.length, 12); i++) {
+      const r = (rows[i] || []).map((x) => String(x == null ? '' : x).toLowerCase().trim());
+      const d = r.findIndex((c) => c.includes('description'));
+      const pn = r.findIndex((c) => c.includes('part') && (c.includes('number') || c.includes('no') || c.includes('#')));
+      if (d !== -1 && pn !== -1) { hi = i; col = { desc: d, pn, qty: r.findIndex((c) => c === 'qty' || c.includes('quantity')), est: r.findIndex((c) => c.includes('amount') || c.includes('price') || c.includes('total')) }; break; }
+    }
+    if (hi === -1) return [];
+    const out = [];
+    for (let i = hi + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const desc = String(r[col.desc] == null ? '' : r[col.desc]).trim(), pn = String(r[col.pn] == null ? '' : r[col.pn]).trim();
+      if (!desc && !pn) continue;
+      if (!pn && /\btotals?\b|sub-?total|grand total|subtotal/i.test(desc)) continue;
+      out.push({ desc, pn, qty: col.qty >= 0 ? num(r[col.qty]) : null, est: col.est >= 0 ? num(r[col.est]) : null });
+    }
+    return out;
+  }
+  function parseEditFile(file) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext !== 'xlsx' && ext !== 'csv') { $('editMsg').innerHTML = '<div class="banner err">Please upload a .xlsx or .csv file.</div>'; return; }
+    if (typeof XLSX === 'undefined') { $('editMsg').innerHTML = '<div class="banner err">Reader still loading — try again in a second.</div>'; return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = ext === 'csv' ? XLSX.read(e.target.result, { type: 'string' }) : XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
+        const lines = rowsToLines(rows);
+        if (!lines.length) { $('editMsg').innerHTML = '<div class="banner err">Couldn\'t find Description / Part Number columns.</div>'; return; }
+        editLines = lines.map((l) => ({ desc: l.desc, pn: l.pn, qty: l.qty, est: l.est }));
+        if (!$('eName').value.trim()) $('eName').value = file.name.replace(/\.(xlsx|csv)$/i, '');
+        $('editMsg').innerHTML = '<div class="banner">Loaded ' + lines.length + ' parts from ' + PH.esc(file.name) + '. Review below, then Update &amp; re-run.</div>';
+        renderEditList();
+      } catch (err) { $('editMsg').innerHTML = '<div class="banner err">Could not read that file: ' + PH.esc(err.message) + '</div>'; }
+    };
+    if (ext === 'csv') reader.readAsText(file); else reader.readAsArrayBuffer(file);
+  }
+  $('eDrop').addEventListener('click', () => $('eFile').click());
+  ['dragover', 'dragenter'].forEach((ev) => $('eDrop').addEventListener(ev, (e) => { e.preventDefault(); $('eDrop').style.borderColor = '#ff5a2c'; }));
+  ['dragleave', 'drop'].forEach((ev) => $('eDrop').addEventListener(ev, () => { $('eDrop').style.borderColor = '#2f343a'; }));
+  $('eDrop').addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) parseEditFile(e.dataTransfer.files[0]); });
+  $('eFile').addEventListener('change', (e) => { if (e.target.files[0]) parseEditFile(e.target.files[0]); });
+  $('eAdd').addEventListener('click', () => { editLines.push({ desc: '', pn: '', qty: null, est: null }); renderEditList(); });
+  $('eCur').addEventListener('change', editSummary);
+
+  function openEdit() {
+    if (!data) return;
+    const f = data.filters || {};
+    $('eName').value = data.project.name || '';
+    esrc.oem = !!f.oem; esrc.aftermarket = !!f.aftermarket; esrc.salvage = !!f.salvage; drawESrc();
+    $('eCur').value = data.currency || 'AUD';
+    editLines = (data.partsList || []).map((l) => ({ desc: l.desc, pn: l.pn, qty: l.qty, est: l.est }));
+    renderEditList();
+    $('eFile').value = ''; $('editMsg').innerHTML = '';
+    $('editPanel').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  $('editBtn').addEventListener('click', () => { const p = $('editPanel'); if (p.style.display === 'block') p.style.display = 'none'; else openEdit(); });
+  $('cancelEdit').addEventListener('click', () => { $('editPanel').style.display = 'none'; });
+  $('updateBtn').addEventListener('click', async () => {
+    const name = $('eName').value.trim();
+    if (!name) { $('editMsg').innerHTML = '<div class="banner err">Name is required.</div>'; return; }
+    const lines = editLines.map((l, i) => ({ id: 'L' + (i + 1), desc: (l.desc || '').toString().trim(), pn: (l.pn || '').toString().trim(), qty: numOrNull(l.qty), est: numOrNull(l.est) })).filter((l) => l.desc || l.pn);
+    if (!lines.length) { $('editMsg').innerHTML = '<div class="banner err">Add at least one part (a description or part number).</div>'; return; }
+    const filters = { oem: esrc.oem, aftermarket: esrc.aftermarket, salvage: esrc.salvage };
+    const config = { kind: 'list', currency: $('eCur').value, filters, partsList: lines, results: null, totals: null };
+    $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Saving and re-hunting ' + lines.length + ' parts — this can take a couple of minutes.</div>';
+    try {
+      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, config } });
+      $('editPanel').style.display = 'none'; $('editMsg').innerHTML = '';
+      await runHunt();
+    } catch (e) { $('editMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
+  });
+
+  async function loadData() { data = await PH.api('/api/list?id=' + encodeURIComponent(id)); feedback = fbMap(data.feedback); }
   async function runHunt() {
     body.innerHTML = '<div class="banner"><span class="spinner"></span> Hunting the cheapest source for every part — this can take a couple of minutes. Leave this open.</div>';
     try { await PH.api('/api/run-list', { method: 'POST', body: { projectId: id } }); await loadData(); render(); }
     catch (e) { body.innerHTML = '<div class="banner err">Hunt failed: ' + PH.esc(e.message) + '</div>'; }
   }
 
-  function chip(f, label, n) {
-    const on = filter === f;
-    const style = 'display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;' +
-      (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:transparent;border:1px solid #23272c;color:#8b9096;');
-    return '<span class="fchip" data-f="' + f + '" style="' + style + '">' + label + ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;opacity:.7">' + n + '</span></span>';
+  /* ---------- user-added ("User") sources: derive from a URL ---------- */
+  async function addSource(p, url, msgEl, btnEl) {
+    url = (url || '').trim();
+    if (!/^https?:\/\//i.test(url)) { if (msgEl) msgEl.innerHTML = '<span style="color:#ff6a3d;font-size:12px">Enter a full URL starting with http…</span>'; return; }
+    const orig = btnEl.textContent; btnEl.style.pointerEvents = 'none'; btnEl.innerHTML = '<span class="spinner"></span> Reading…';
+    if (msgEl) msgEl.innerHTML = '';
+    try {
+      const r = await PH.api('/api/list-source', { method: 'POST', body: { projectId: id, partId: p.id, url } });
+      data.results = r.results; data.totals = r.totals; open[p.id] = true; render();
+    } catch (e) { btnEl.style.pointerEvents = 'auto'; btnEl.textContent = orig; if (msgEl) msgEl.innerHTML = '<span style="color:#ff6a3d;font-size:12px">' + PH.esc(e.message) + '</span>'; }
+  }
+  async function delSource(p, sid) {
+    try { const r = await PH.api('/api/list-source', { method: 'DELETE', body: { projectId: id, partId: p.id, id: sid } }); data.results = r.results; data.totals = r.totals; open[p.id] = true; render(); }
+    catch (e) { PH.toast('Remove failed: ' + e.message); }
+  }
+
+  function chip(kind, val, cur, label, n) {
+    const on = cur === val;
+    const style = 'display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;' + (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:transparent;border:1px solid #23272c;color:#8b9096;');
+    return '<span class="' + kind + 'chip" data-v="' + val + '" style="' + style + '">' + label + (n != null ? ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;opacity:.7">' + n + '</span>' : '') + '</span>';
+  }
+
+  function sourceCard(p, a) {
+    const key = keyOf(p, a), href = hrefOf(p, a), v = feedback[key] || 0, saved = PH.watch.has(href);
+    const bLabel = a.best ? 'BEST' : (KIND[a.kind] || 'ALT');
+    const bStyle = a.best ? badge('BEST', '#58c98a', 'rgba(88,201,138,.13)') : badge(bLabel, '#8b9096', 'rgba(139,144,150,.12)');
+    const prov = a.provider === 'user' ? ['User', '#ff6a3d', 'rgba(255,90,44,.14)'] : ['Claude', '#8ab4f8', 'rgba(138,180,248,.12)'];
+    const provBadge = '<span style="' + badge(prov[0], prov[1], prov[2]) + '">' + prov[0] + '</span>';
+    const rowStyle = "display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:14px 16px;text-decoration:none;color:inherit;cursor:pointer;background:#16181b;border:1px solid " + (a.best ? 'rgba(88,201,138,.4)' : '#24282d') + ";border-radius:12px;";
+    const isrc = a.image ? imgUrl(a.image) : '';
+    const thumb = isrc
+      ? '<div style="width:96px;height:74px;border-radius:9px;flex-shrink:0;overflow:hidden;border:1px solid #24282d"><img src="' + PH.esc(isrc) + '" referrerpolicy="no-referrer" loading="lazy" onerror="this.parentElement.innerHTML=\'\'" style="width:100%;height:100%;object-fit:cover"></div>'
+      : '<div style="width:96px;height:74px;border-radius:9px;flex-shrink:0;background-image:repeating-linear-gradient(135deg,#1b1e22 0 8px,#16181b 8px 16px);border:1px solid #24282d;display:flex;align-items:center;justify-content:center"><span style="font-family:\'JetBrains Mono\',monospace;font-size:9px;color:#565b61;letter-spacing:.05em">part shot</span></div>';
+    const inner = thumb +
+      '<div style="flex:1;min-width:190px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px;flex-wrap:wrap"><span style="' + bStyle + '">' + bLabel + '</span>' + provBadge +
+        '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15px;margin:0;line-height:1.3">' + PH.esc(a.label) + '</h3></div>' +
+        '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">' + PH.esc(p.desc || '') + ' &nbsp;·&nbsp; PN ' + PH.esc(p.pn || '—') + '</div></div>' +
+      '<div style="display:flex;align-items:center;gap:14px;flex-shrink:0" data-nolink>' +
+        '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:19px;white-space:nowrap;color:' + (a.best ? '#58c98a' : '#e9ebed') + '">' + money(a.price) + '</div>' +
+        '<div style="display:flex;gap:7px" data-key="' + PH.esc(key) + '" data-href="' + PH.esc(href) + '">' +
+          '<div class="jsave" title="Save to watchlist" style="' + saveStyle(saved) + '">' + (saved ? '★' : '☆') + '</div>' +
+          '<div class="jup" title="Good source" style="' + voteStyle(v === 1, 'up') + '">▲</div>' +
+          '<div class="jdown" title="Bad source" style="' + voteStyle(v === -1, 'down') + '">▼</div>' +
+          (a.manual ? '<div class="jdel" data-del="' + PH.esc(a.id || '') + '" title="Remove your source" style="' + delStyle + '">×</div>' : '') +
+        '</div></div>';
+    return '<a href="' + PH.esc(href) + '" target="_blank" rel="noopener" style="' + rowStyle + '">' + inner + '</a>';
   }
 
   function rowHtml(p) {
-    const m = META[p.status];
-    const isOpen = !!open[p.id];
+    const st = STAT[p.status], isOpen = !!open[p.id];
     const pct = p.status === 'saving' && p.est ? Math.round(p.saving / p.est * 100) : 0;
-    const rowStyle = 'background:#131518;border:1px solid ' + (p.status === 'saving' ? 'rgba(88,201,138,.28)' : '#23272c') + ';border-radius:13px;overflow:hidden';
-    const foundStyle = 'font-family:Archivo,sans-serif;font-weight:700;font-size:18px;white-space:nowrap;color:' + (p.status === 'saving' ? '#58c98a' : '#e9ebed');
+    const foundStyle = 'font-family:Archivo,sans-serif;font-weight:700;font-size:20px;white-space:nowrap;color:' + (p.status === 'saving' ? '#58c98a' : '#e9ebed');
     const saveLabel = p.status === 'saving' ? '−' + money(p.saving) + ' · ' + pct + '%' : (p.status === 'nocheaper' ? 'OEM best' : 'Not found');
-    const badge = '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 7px;border-radius:5px;color:' + m.color + ';background:' + m.bg + '">' + m.label + '</span>';
-    const matchLabel = p.matches > 0 ? p.matches + (p.matches === 1 ? ' source' : ' sources') : '—';
-    const alts = (p.alts || []).map((a) =>
-      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 13px;background:#0f1113;border:1px solid #24282d;border-radius:9px">' +
-      '<span style="font-family:\'JetBrains Mono\',monospace;font-size:12.5px;color:#d7dbde">' + PH.esc(a.label) + '</span>' +
-      '<div style="display:flex;align-items:center;gap:10px"><span style="font-family:Archivo,sans-serif;font-weight:700;font-size:14px">' + money(a.price) + '</span>' +
-      (a.best ? '<span style="font-family:\'JetBrains Mono\',monospace;font-size:10px;font-weight:600;color:#0d0e10;background:#58c98a;padding:3px 7px;border-radius:5px">BEST</span>' : '') + '</div></div>'
-    ).join('');
-    return '<div style="' + rowStyle + '" data-id="' + PH.esc(p.id) + '">' +
-      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:15px 17px">' +
-        '<div style="flex:1;min-width:200px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px">' + badge +
+    const matchLabel = p.matches > 0 ? p.matches + (p.matches === 1 ? ' source' : ' sources') : 'no sources yet';
+    const wrapBorder = p.status === 'saving' ? 'rgba(88,201,138,.4)' : '#23272c';
+    const parent =
+      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:16px 17px">' +
+        '<div style="flex:1;min-width:200px"><div style="display:flex;align-items:center;gap:9px;margin-bottom:5px"><span style="' + badge(st.label, st.color, st.bg) + '">' + st.label + '</span>' +
           '<h3 style="font-family:Archivo,sans-serif;font-weight:600;font-size:15px;margin:0;line-height:1.3">' + PH.esc(p.desc || '') + '</h3></div>' +
           '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#8b9096">PN ' + PH.esc(p.pn || '—') + ' &nbsp;·&nbsp; qty ' + (p.qty != null ? p.qty : '—') + ' &nbsp;·&nbsp; ' + matchLabel + '</div></div>' +
-        '<div style="text-align:right"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">ESTIMATE</div>' +
-          '<div style="font-family:\'JetBrains Mono\',monospace;font-size:14px;color:#9aa0a6;text-decoration:line-through">' + money(p.est) + '</div></div>' +
+        '<div style="text-align:right"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">ESTIMATE</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:14px;color:#9aa0a6;text-decoration:line-through">' + money(p.est) + '</div></div>' +
         '<div style="width:22px;text-align:center;color:#4e5359">→</div>' +
-        '<div style="text-align:right;min-width:96px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">BEST FOUND</div>' +
-          '<div style="' + foundStyle + '">' + (p.found != null ? money(p.found) : '—') + '</div>' +
-          '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;font-weight:600;color:' + m.color + '">' + saveLabel + '</div></div>' +
-        (p.matches > 0 ? '<div class="chev" style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;cursor:pointer;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;flex-shrink:0">' + (isOpen ? '▲' : '▼') + '</div>' : '<div style="width:32px"></div>') +
-      '</div>' +
-      (isOpen && alts ? '<div style="border-top:1px solid #22262b;padding:6px 17px 14px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076;margin:12px 0 8px">SOURCES FOUND</div><div style="display:flex;flex-direction:column;gap:7px">' + alts + '</div></div>' : '') +
-    '</div>';
+        '<div style="text-align:right;min-width:96px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;color:#6b7076;letter-spacing:.06em">BEST FOUND</div><div style="' + foundStyle + '">' + (p.found != null ? money(p.found) : '—') + '</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;font-weight:600;color:' + st.color + '">' + saveLabel + '</div></div>' +
+        '<div class="chev" style="width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;flex-shrink:0">' + (isOpen ? '▲' : '▼') + '</div>' +
+      '</div>';
+    const cards = (p.alts || []).map((a) => sourceCard(p, a)).join('');
+    const addForm =
+      '<div class="addsrc" style="margin-top:' + (cards ? '12' : '2') + 'px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+        '<input class="addurl" placeholder="Paste a product URL to add your own source…" style="flex:1;min-width:240px;box-sizing:border-box;background:#0f1113;border:1px solid #23272c;border-radius:9px;color:#e9ebed;font-size:12.5px;padding:9px 12px;outline:none">' +
+        '<div class="addbtn" style="padding:9px 16px;border-radius:9px;background:#ff5a2c;color:#0d0e10;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap">＋ Add source</div>' +
+        '<div class="addmsg" style="width:100%"></div>' +
+      '</div>';
+    const expand = isOpen
+      ? '<div style="border-top:1px solid #22262b;padding:14px 17px 16px"><div style="font-family:\'JetBrains Mono\',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076;margin:0 0 10px">SOURCES FOUND</div>' +
+        (cards ? '<div style="display:flex;flex-direction:column;gap:10px">' + cards + '</div>' : '<div style="font-size:12.5px;color:#6b7076;padding:2px 0 4px">No sources yet — paste a product URL below to add one.</div>') +
+        addForm + '</div>'
+      : '';
+    return '<div data-id="' + PH.esc(p.id) + '" style="background:#131518;border:1px solid ' + wrapBorder + ';border-radius:14px;overflow:hidden">' + parent + expand + '</div>';
   }
 
   function render() {
-    document.getElementById('pName').textContent = data.project.name;
+    $('pName').textContent = data.project.name;
+    $('pGoal').textContent = data.project.goal || '';
+    learn();
     const parts = data.results || data.partsList || [];
-    document.getElementById('kicker').textContent = '// PARTS LIST HUNT — ' + parts.length + ' LINES';
-
+    $('kicker').textContent = '// PARTS LIST HUNT — ' + parts.length + ' LINES';
     if (!data.results) {
-      body.innerHTML = '<div class="banner" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap"><span>' + (data.partsList || []).length + ' parts ready to hunt.</span>' +
-        '<button class="btn" id="runBtn">Hunt all ' + (data.partsList || []).length + ' parts &#8594;</button></div>';
-      document.getElementById('runBtn').addEventListener('click', runHunt);
-      return;
+      body.innerHTML = '<div class="banner" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap"><span>' + (data.partsList || []).length + ' parts ready to hunt.</span><button class="btn" id="runBtn">Hunt all ' + (data.partsList || []).length + ' parts &#8594;</button></div>';
+      $('runBtn').addEventListener('click', runHunt); return;
     }
     const t = data.totals || { estTotal: 0, foundTotal: 0, saveTotal: 0 };
-    const pct = t.estTotal ? Math.round(t.saveTotal / t.estTotal * 100) : 0;
-    const r = data.results;
-    const c = { all: r.length, saving: r.filter((x) => x.status === 'saving').length, nocheaper: r.filter((x) => x.status === 'nocheaper').length, notfound: r.filter((x) => x.status === 'notfound').length };
-
+    const pct = t.estTotal ? Math.round(t.saveTotal / t.estTotal * 100) : 0, r = data.results;
+    const sc = { all: r.length, saving: r.filter((x) => x.status === 'saving').length, nocheaper: r.filter((x) => x.status === 'nocheaper').length, notfound: r.filter((x) => x.status === 'notfound').length };
+    const kc = { all: r.length, oem: r.filter((x) => x.kind === 'oem').length, aftermarket: r.filter((x) => x.kind === 'aftermarket').length, salvage: r.filter((x) => x.kind === 'salvage').length };
     body.innerHTML =
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:26px">' +
+      '<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="btn grey" id="rehunt">&#8635; Re-hunt all parts</button></div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">' +
         '<div style="padding:18px 20px;border:1px solid #22262b;border-radius:13px;background:#131518"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#6b7076;margin-bottom:8px">ESTIMATE TOTAL</div><div style="font-family:Archivo,sans-serif;font-weight:700;font-size:27px">' + money(t.estTotal) + '</div></div>' +
         '<div style="padding:18px 20px;border:1px solid #22262b;border-radius:13px;background:#131518"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#6b7076;margin-bottom:8px">BEST-FOUND TOTAL</div><div style="font-family:Archivo,sans-serif;font-weight:700;font-size:27px">' + money(t.foundTotal) + '</div></div>' +
         '<div style="padding:18px 20px;border:1px solid rgba(88,201,138,.35);border-radius:13px;background:linear-gradient(120deg,rgba(88,201,138,.12),rgba(88,201,138,.02))"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#58c98a;margin-bottom:8px">POTENTIAL SAVING</div><div style="display:flex;align-items:baseline;gap:9px"><div style="font-family:Archivo,sans-serif;font-weight:800;font-size:27px;color:#58c98a">' + money(t.saveTotal) + '</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:13px;color:#58c98a">−' + pct + '%</div></div></div>' +
       '</div>' +
-      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Filter</span><span id="fchips">' +
-        chip('all', 'All', c.all) + chip('saving', 'Savings found', c.saving) + chip('nocheaper', 'OEM best price', c.nocheaper) + chip('notfound', 'No match', c.notfound) + '</span></div>' +
-      '<div id="rows" style="display:flex;flex-direction:column;gap:10px"></div>';
-    drawChips(); drawRows();
+      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Status</span><span id="schips">' + chip('s', 'all', sfilter, 'All', sc.all) + chip('s', 'saving', sfilter, 'Savings', sc.saving) + chip('s', 'nocheaper', sfilter, 'OEM best', sc.nocheaper) + chip('s', 'notfound', sfilter, 'No match', sc.notfound) + '</span></div>' +
+      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem', kfilter, 'OEM', kc.oem) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span><div style="flex:1"></div><span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#6b7076">Rate results to sharpen the next run &#8594;</span></div>' +
+      '<div id="rows" style="display:flex;flex-direction:column;gap:12px"></div>';
+    const rh = $('rehunt'); if (rh) rh.addEventListener('click', runHunt);
+    document.querySelectorAll('#schips .schip').forEach((el) => el.addEventListener('click', () => { sfilter = el.dataset.v; render(); }));
+    document.querySelectorAll('#kchips .kchip').forEach((el) => el.addEventListener('click', () => { kfilter = el.dataset.v; render(); }));
+    drawRows();
   }
 
-  function drawChips() {
-    document.querySelectorAll('#fchips .fchip').forEach((el) => el.addEventListener('click', () => { filter = el.dataset.f; render(); }));
-  }
   function drawRows() {
-    const shown = data.results.filter((p) => filter === 'all' || p.status === filter);
-    const el = document.getElementById('rows');
+    const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || p.kind === kfilter));
+    const el = $('rows');
     el.innerHTML = shown.map(rowHtml).join('') || '<div class="banner">Nothing in this filter.</div>';
-    el.querySelectorAll('[data-id]').forEach((row) => {
-      const chev = row.querySelector('.chev'); if (!chev) return;
-      chev.addEventListener('click', () => { const pid = row.dataset.id; open[pid] = !open[pid]; drawRows(); });
+    el.querySelectorAll('[data-id]').forEach((wrap) => {
+      const p = data.results.find((x) => x.id === wrap.dataset.id);
+      const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+      const chev = wrap.querySelector('.chev'); if (chev) chev.addEventListener('click', (e) => { stop(e); open[p.id] = !open[p.id]; drawRows(); });
+      wrap.querySelectorAll('[data-key]').forEach((box) => {
+        const key = box.dataset.key, href = box.dataset.href;
+        const alt = (p.alts || []).find((a) => (a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''))) === key);
+        const up = box.querySelector('.jup'), down = box.querySelector('.jdown'), sv = box.querySelector('.jsave'), dl = box.querySelector('.jdel');
+        if (up) up.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] > 0) ? 0 : 1); });
+        if (down) down.addEventListener('click', (e) => { stop(e); voteSrc(p, key, (feedback[key] < 0) ? 0 : -1); });
+        if (sv) sv.addEventListener('click', (e) => { stop(e); PH.watch.toggle({ url: href, title: (alt ? alt.label + ' — ' : '') + (p.desc || ''), price: alt ? alt.price : null, seller: alt ? alt.label : '', image: alt ? alt.image : null, section: 'Parts list', projectId: id, projectName: data.project.name }); PH.updateWatchCount(); drawRows(); PH.toast(PH.watch.has(href) ? 'Saved to watchlist' : 'Removed from watchlist'); });
+        if (dl) dl.addEventListener('click', (e) => { stop(e); delSource(p, dl.dataset.del); });
+      });
+      const add = wrap.querySelector('.addsrc');
+      if (add) {
+        const inp = add.querySelector('.addurl'), btn = add.querySelector('.addbtn'), msg = add.querySelector('.addmsg');
+        btn.addEventListener('click', (e) => { stop(e); addSource(p, inp.value, msg, btn); });
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addSource(p, inp.value, msg, btn); } });
+      }
     });
   }
+  async function voteSrc(p, key, value) {
+    try {
+      await PH.api('/api/feedback', { method: 'POST', body: { projectId: id, url: key, title: p ? p.desc : '', vote: value } });
+      if (value === 0) delete feedback[key]; else feedback[key] = value;
+      learn(); drawRows();
+    } catch (e) { PH.toast('Vote failed: ' + e.message); }
+  }
 
-  try {
-    await loadData();
-    if (wantRun && !data.results) { render(); runHunt(); } else render();
-  } catch (e) { body.innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>'; }
+  try { await loadData(); if (wantRun && !data.results) { render(); runHunt(); } else render(); }
+  catch (e) { body.innerHTML = '<div class="banner err">Could not load: ' + PH.esc(e.message) + '</div>'; }
 });
 </script>
 </body>
