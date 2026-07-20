@@ -34,7 +34,7 @@ export default async function handler(req, res) {
         console.error('Config expansion failed (using empty):', e.message);
       }
 
-      config.filters = filters || { oem: false, aftermarket: false, salvage: false, country: 'all' };
+      config.filters = filters || { oem_new: false, oem_used: false, aftermarket: false, salvage: false, country: 'all' };
 
       const projectId = uid();
       await sql`INSERT INTO projects (id, name, goal, config) VALUES (${projectId}, ${name}, ${goal}, ${JSON.stringify(config)}::jsonb)`;

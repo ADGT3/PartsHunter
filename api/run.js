@@ -137,7 +137,8 @@ function filtersToRules(filters) {
   if (!filters) return [];
   const out = [];
   const kinds = [];
-  if (filters.oem) kinds.push('genuine OEM parts');
+  if (filters.oem_new || filters.oem) kinds.push('new genuine OEM parts');
+  if (filters.oem_used || filters.oem) kinds.push('used / second-hand genuine OEM parts (used-parts dealers, breakers)');
   if (filters.aftermarket) kinds.push('aftermarket parts');
   if (filters.salvage) kinds.push('salvage / donor vehicles');
   if (kinds.length) {
