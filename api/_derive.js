@@ -9,7 +9,6 @@ export function sellerFromUrl(u) { try { return new URL(u).hostname.replace(/^ww
 function pick(re, html) { const m = html.match(re); return m ? String(m[1]).trim() : null; }
 function decode(s) { return String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim(); }
 
-/* Shopify fast-path: authoritative decimal price + currency + images from the store's own JSON. */
 async function deriveShopify(url) {
   let u; try { u = new URL(url); } catch (e) { return null; }
   const m = u.pathname.match(/\/products\/([^\/?#]+)/);
@@ -30,7 +29,6 @@ async function deriveShopify(url) {
 }
 
 async function getHtml(url, heavy) {
-  // 1. Direct fetch — fast; works for un-protected sites.
   try {
     const c = new AbortController(); const t = setTimeout(() => c.abort(), 9000);
     const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', 'accept-language': 'en' }, signal: c.signal });
@@ -42,7 +40,6 @@ async function getHtml(url, heavy) {
   if (!key) return null;
   const base = process.env.BROWSERLESS_BASE || 'https://production-sfo.browserless.io';
 
-  // 2. (heavy only) /unblock with residential proxy — bypasses bot detection / most anti-bot walls.
   if (heavy) {
     const unblock = async (residential) => {
       try {
@@ -62,7 +59,6 @@ async function getHtml(url, heavy) {
     h = await unblock(false); if (h) return h;
   }
 
-  // 3. Plain /content (headless render) — reads prices that only appear after JS runs.
   try {
     const c = new AbortController(); const t = setTimeout(() => c.abort(), heavy ? 25000 : 16000);
     const r = await fetch(base + '/content?token=' + key, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url, waitForTimeout: 3500, bestAttempt: true }), signal: c.signal });
@@ -90,7 +86,6 @@ function extract(html) {
       }
     }
   }
-  // The loose JSON "price" match REQUIRES a decimal so it can't grab a cents/pence integer.
   if (price == null) price = pick(/property=["']product:price:amount["'][^>]*content=["']([^"']+)["']/i, html) || pick(/itemprop=["']price["'][^>]*content=["']([^"']+)["']/i, html) || pick(/["']price["']\s*:\s*["']?([0-9]{1,7}[.,][0-9]{2})\b/i, html);
   if (!currency) currency = pick(/property=["']product:price:currency["'][^>]*content=["']([^"']+)["']/i, html) || pick(/itemprop=["']priceCurrency["'][^>]*content=["']([^"']+)["']/i, html) || pick(/["']priceCurrency["']\s*:\s*["']([A-Z]{3})["']/i, html);
   if (!title) title = pick(/property=["']og:title["'][^>]*content=["']([^"']+)["']/i, html) || pick(/<title[^>]*>([^<]+)<\/title>/i, html);
@@ -109,7 +104,7 @@ export function guessKind(title, url) {
 }
 
 export async function deriveListing(url, opts) {
-  const heavy = !(opts && opts.heavy === false); // default: full escalation (manual adds)
+  const heavy = !(opts && opts.heavy === false);
   const shop = await deriveShopify(url);
   if (shop && shop.price != null) return shop;
   const html = await getHtml(url, heavy);

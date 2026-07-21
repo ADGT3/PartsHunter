@@ -7,8 +7,9 @@ import { deriveListing, sellerFromUrl } from './_derive.js';
  *   oem_used = genuine used/second-hand part sold as a part (used-parts dealers, eBay listings, breakers)
  *   aftermarket = non-genuine / replica / pattern part
  *   salvage  = the part is on a whole salvage/wrecked vehicle for sale (Copart, IAAI, Manheim, Pickles)
- * Hunted sources tagged provider:'claude'; user manual sources (provider:'user') merged back in.
- * Price recovery: parts LOCATED (URL) but not PRICED get their page fetched via deriveListing(). */
+ * Each result carries its part's location category (cat) for grouping. Hunted sources tagged
+ * provider:'claude'; user manual sources (provider:'user') merged back in. Price recovery: parts
+ * LOCATED (URL) but not PRICED get their page fetched via deriveListing(). */
 
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages';
 const VER = '2023-06-01';
@@ -59,7 +60,6 @@ async function fxToAud() {
   };
 }
 
-/* Normalise a source's kind to one of the four buckets. */
 function normKind(k) {
   const s = String(k || '').toLowerCase();
   if (/copart|iaai|manheim|pickles|salvage|wreck|whole[\s_-]?(car|vehicle)|donor vehicle/.test(s)) return 'salvage';
@@ -243,7 +243,7 @@ export default async function handler(req, res) {
         else status = 'nocheaper';
       }
       const alts = raw.slice(0, 8).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind, provider: 'claude' }));
-      const part = { id: p.id, desc: p.desc, pn: p.pn, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
+      const part = { id: p.id, desc: p.desc, pn: p.pn, cat: p.cat || null, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
       if (part.matches === 0 && unpriced.length) recoverQueue.push({ p: part, cands: unpriced.slice(0, 2) });
       return part;
     });

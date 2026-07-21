@@ -23,6 +23,7 @@ export default async function handler(req, res) {
       id: 'L' + (i + 1),
       desc: (l.desc || '').toString().slice(0, 300),
       pn: (l.pn || '').toString().slice(0, 80),
+      cat: (l.cat || '').toString().slice(0, 40) || null,
       qty: (l.qty == null || l.qty === '' || isNaN(Number(l.qty))) ? null : Number(l.qty),
       est: (l.est == null || l.est === '' || isNaN(Number(l.est))) ? null : Number(l.est)
     })).filter((l) => l.desc || l.pn);
