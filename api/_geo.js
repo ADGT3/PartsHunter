@@ -119,8 +119,10 @@ export function countryConstraint(codes) {
     return c.name + ' (' + c.tlds.join(' / ') + ')';
   });
   const tlds = tldsFor(codes);
-  return 'CONSTRAINT (source country): ONLY use sellers whose own website is on these country domains: ' +
-    parts.join('; ') + '. Prefer site: queries scoped to those domains (' + tlds.join(', ') + '). ' +
-    'This is about where the part is SOLD FROM (the seller\'s domain), not where it ships to. ' +
-    'Ignore any seller on a different country\'s domain (e.g. .com, .de, .co.za) even if it stocks the part.';
+  const example = tlds[0] || '.com.au';
+  return 'COUNTRY CONSTRAINT — search only these markets: ' + parts.join('; ') + '. ' +
+    'For EVERY part you MUST run site:-scoped web searches against these domains (e.g. site:' + example + ' "<part number>") ' +
+    'and also check each market\'s eBay site and known local parts dealers BEFORE deciding a part is unavailable. ' +
+    'Report ONLY sellers whose own website is on these domains (' + tlds.join(', ') + '); that is where the part is SOLD FROM, not where it ships to. ' +
+    'Any seller whose website is not on the listed domains will be discarded — do not return them; spend your searches on the listed domains to surface real in-country sellers.';
 }

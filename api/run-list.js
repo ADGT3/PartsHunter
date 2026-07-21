@@ -20,7 +20,9 @@ const CONCURRENCY = Number(process.env.LIST_CONCURRENCY || 6);
 const BUDGET_MS = Number(process.env.LIST_BUDGET_MS || 260000);
 const PRICE_FETCHES = Number(process.env.LIST_PRICE_FETCHES || 8);
 const RECOVER_HEADROOM_MS = 30000;
-const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: Number(process.env.LIST_SEARCH_USES || 6) };
+const SEARCH_USES = Number(process.env.LIST_SEARCH_USES || 6);
+const SEARCH_USES_GEO = Number(process.env.LIST_SEARCH_USES_GEO || 10); // more budget when country-scoped
+const SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: SEARCH_USES };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function parseAmount(v) {
@@ -141,7 +143,7 @@ async function findChunk(parts, wants, geo) {
         r = await fetch(ANTHROPIC, {
           method: 'POST',
           headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VER },
-          body: JSON.stringify({ model: MODEL, max_tokens: 4500, system, messages, tools: [SEARCH_TOOL] }),
+          body: JSON.stringify({ model: MODEL, max_tokens: 4500, system, messages, tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: geo ? SEARCH_USES_GEO : SEARCH_USES }] }),
           signal: c.signal
         });
       } finally { clearTimeout(t); }
