@@ -245,7 +245,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const lines = editLines.map((l, i) => ({ id: 'L' + (i + 1), desc: (l.desc || '').toString().trim(), pn: (l.pn || '').toString().trim(), cat: (l.cat || proposeCategory(l.desc)), qty: numOrNull(l.qty), est: numOrNull(l.est) })).filter((l) => l.desc || l.pn);
     if (!lines.length) { $('editMsg').innerHTML = '<div class="banner err">Add at least one part (a description or part number).</div>'; return; }
     const filters = { oem_new: esrc.oem_new, oem_used: esrc.oem_used, aftermarket: esrc.aftermarket, salvage: esrc.salvage };
-    const config = { kind: 'list', currency: $('eCur').value, filters, partsList: lines, results: null, totals: null };
+    const config = { kind: 'list', currency: $('eCur').value, filters, partsList: lines, results: null, totals: null, manualSources: data.manualSources || {} };
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Saving and re-hunting ' + lines.length + ' parts — this can take a couple of minutes.</div>';
     try {
       await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, config } });

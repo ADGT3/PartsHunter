@@ -52,6 +52,15 @@
         <h3 style="font-family:Archivo,sans-serif;font-weight:700;font-size:16px;margin:0 0 16px">Matching rules</h3>
         <div id="rules" style="display:flex;flex-direction:column;gap:8px"></div>
       </div>
+      <div style="background:#131518;border:1px solid #23272c;border-radius:16px;padding:22px">
+        <h3 style="font-family:Archivo,sans-serif;font-weight:700;font-size:16px;margin:0 0 6px">Categories</h3>
+        <div style="font-size:12px;color:#6b7076;margin-bottom:14px">Results are grouped into these. Auto-drafted from your goal &mdash; add or remove any.</div>
+        <div id="cats" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
+        <div style="display:flex;gap:8px">
+          <input id="newCat" placeholder="Add a category&hellip;" style="flex:1;padding:10px 12px;background:#0f1113;border:1px solid #2a2e34;border-radius:8px;color:#e9ebed;font-size:13px">
+          <div id="addCat" style="padding:10px 14px;border-radius:8px;border:1px solid #2a2e34;color:#e9ebed;font-weight:600;font-size:13px;cursor:pointer">Add</div>
+        </div>
+      </div>
     </div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-top:24px;padding:20px 22px;background:linear-gradient(90deg,rgba(255,90,44,.09),rgba(255,90,44,.02));border:1px solid rgba(255,90,44,.2);border-radius:14px">
@@ -75,7 +84,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   const id = PH.qs('id'), isNew = PH.qs('new') === '1';
   const $ = (i) => document.getElementById(i);
   const COUNTRY = { all: 'worldwide', au: 'Australia', us: 'United States', gb: 'United Kingdom', ca: 'Canada', nz: 'New Zealand', de: 'Germany', jp: 'Japan', ae: 'UAE' };
-  let project = null, queries = [], rules = [], country = 'all';
+  let project = null, queries = [], rules = [], categories = [], country = 'all';
 
   $('kicker').textContent = isNew ? '// DRAFT READY — REVIEW & RUN' : '// EDIT SEARCH';
   $('runReady').textContent = isNew ? 'Ready to run' : 'Ready to update';
@@ -107,13 +116,20 @@ document.addEventListener('DOMContentLoaded', async function () {
     $('summary').textContent = queries.length + ' queries · ' + active + ' rules · ' + (COUNTRY[country] || country);
   }
 
+  function drawCats() {
+    $('cats').innerHTML = categories.map((c, i) => '<span style="display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:20px;background:rgba(255,90,44,.12);border:1px solid rgba(255,90,44,.4);color:#ffb59c;font-size:13px;font-weight:600">' + PH.esc(c) + '<span class="cx" data-i="' + i + '" style="cursor:pointer;color:#ff6a3d;font-size:15px;line-height:1">\u00d7</span></span>').join('') || '<span style="font-size:12.5px;color:#6b7076">No categories \u2014 results won\'t be grouped.</span>';
+    $('cats').querySelectorAll('.cx').forEach((el) => el.addEventListener('click', () => { categories.splice(+el.dataset.i, 1); drawCats(); }));
+  }
+  $('addCat').addEventListener('click', () => { const v = $('newCat').value.trim(); if (v && categories.indexOf(v) < 0) { categories.push(v); $('newCat').value = ''; drawCats(); } });
+  $('newCat').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addCat').click(); });
+
   $('addQuery').addEventListener('click', () => { const v = $('newQuery').value.trim(); if (v) { queries.push(v); $('newQuery').value = ''; drawQueries(); summary(); } });
   $('newQuery').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('addQuery').click(); });
 
   $('runBtn').addEventListener('click', async () => {
     const btn = $('runBtn'); btn.style.pointerEvents = 'none';
     $('msg').innerHTML = '<div class="banner"><span class="spinner"></span> ' + (isNew ? 'Running the search' : 'Updating and re-running') + '… this can take a couple of minutes.</div>';
-    const config = Object.assign({}, project.config || {}, { queries, rules: rules.filter((r) => r.on).map((r) => r.label) });
+    const config = Object.assign({}, project.config || {}, { queries, rules: rules.filter((r) => r.on).map((r) => r.label), categories });
     try {
       await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { config } });
       await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
@@ -128,8 +144,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     $('pName').textContent = project.name;
     queries = (c.queries || []).slice();
     rules = (c.rules || []).map((r) => ({ label: r, on: true }));
+    categories = (c.categories || []).slice();
     country = (c.filters && c.filters.country) || 'all';
-    drawQueries(); drawRules(); summary();
+    drawQueries(); drawRules(); drawCats(); summary();
   } catch (e) { $('pName').textContent = 'Could not load draft'; $('msg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
 });
 </script>
