@@ -3,6 +3,7 @@ import { requireAuth } from './_auth.js';
 import { runSearch } from './_anthropic.js';
 import { runGrokSearch } from './_grok.js';
 import { runSalvageSearch } from './_salvage.js';
+import { normCountries, countryConstraint } from './_geo.js';
 
 const CAP = Number(process.env.RUN_CAP_PER_DAY || 20);
 
@@ -118,21 +119,8 @@ function snapSections(listings, categories) {
   });
 }
 
-// Translate the user's filter checkboxes / country into search constraints.
-const COUNTRY = {
-  au: { name: 'Australia', tld: '.au / .com.au' },
-  us: { name: 'the United States', tld: '.com (US-based)' },
-  gb: { name: 'the United Kingdom', tld: '.co.uk / .uk' },
-  ca: { name: 'Canada', tld: '.ca' },
-  nz: { name: 'New Zealand', tld: '.co.nz / .nz' },
-  de: { name: 'Germany', tld: '.de' },
-  fr: { name: 'France', tld: '.fr' },
-  it: { name: 'Italy', tld: '.it' },
-  es: { name: 'Spain', tld: '.es' },
-  nl: { name: 'the Netherlands', tld: '.nl' },
-  jp: { name: 'Japan', tld: '.jp' },
-  ae: { name: 'the UAE', tld: '.ae' }
-};
+// Translate the user's filter checkboxes / countries into search constraints.
+// Country geography (source-domain) constraint is shared with the parts-list engine via _geo.js.
 function filtersToRules(filters) {
   if (!filters) return [];
   const out = [];
@@ -144,12 +132,8 @@ function filtersToRules(filters) {
   if (kinds.length) {
     out.push('CONSTRAINT (result type): ONLY include ' + kinds.join(', ') + '. Exclude anything that is none of these.');
   }
-  if (filters.country && filters.country !== 'all') {
-    const c = COUNTRY[filters.country] || { name: filters.country, tld: '' };
-    out.push('CONSTRAINT (geography): ONLY include listings based in or that ship to ' + c.name +
-      '. Strongly prefer local sites (' + c.tld + ') and sellers located in ' + c.name +
-      '; use site: queries for those domains. Exclude listings that cannot be purchased from ' + c.name + '.');
-  }
+  const geo = countryConstraint(normCountries(filters));
+  if (geo) out.push(geo);
   return out;
 }
 

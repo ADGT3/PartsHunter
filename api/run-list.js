@@ -1,6 +1,7 @@
 import { sql, ensureSchema, readBody } from './_db.js';
 import { requireAuth } from './_auth.js';
 import { deriveListing, sellerFromUrl } from './_derive.js';
+import { normCountries, countryConstraint, hostInCountries, locationInCountries } from './_geo.js';
 
 /* Parts-list hunt engine. Source kinds: oem_new | oem_used | aftermarket | salvage.
  *   oem_new  = brand-new genuine OEM part
@@ -103,7 +104,7 @@ function mergePart(p, extra) {
   } else { p.found = null; p.source = null; p.url = null; p.kind = null; p.status = 'notfound'; p.saving = 0; }
 }
 
-async function findChunk(parts, wants) {
+async function findChunk(parts, wants, geo) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return {};
   const constraint = wants.length
@@ -118,6 +119,7 @@ async function findChunk(parts, wants) {
     'PRICE RULES: give the exact price shown as a plain number using a dot for the decimal and NO thousands separators. Beware European formatting — "3.568,70 €" means 3568.70 EUR. Set "currency" to the currency actually shown; do not convert.',
     'If you find a seller that clearly stocks the part but you CANNOT read a price (price behind vehicle selection, "POA", login, etc.), STILL include it with its product "url" and omit "price" — do not discard it.',
     constraint,
+    ...(geo ? [geo] : []),
     'Include EVERY distinct real seller you find. Check SEVERAL catalogues — e.g. teile.com, eurospares, design911, oempartsonline, pelican parts, ecs tuning, fcp euro, suncoast, autohaus, eBay, plus used-parts breakers and salvage auctions. If nothing is found for a part, use an empty array for that part number.'
   ].join(' ');
   const user = 'PARTS:\n' + parts.map((p) => '- ' + p.pn + '  (' + p.desc + ')').join('\n') + '\n\nReturn the JSON object now.';
@@ -192,6 +194,8 @@ export default async function handler(req, res) {
     if (f.oem_used || f.oem) wants.push('oem_used');
     if (f.aftermarket) wants.push('aftermarket');
     if (f.salvage) wants.push('salvage');
+    const countryCodes = normCountries(f);
+    const geo = countryConstraint(countryCodes);
     const manualAll = (cfg.manualSources && typeof cfg.manualSources === 'object') ? cfg.manualSources : {};
 
     const toAud = await fxToAud();
@@ -204,7 +208,7 @@ export default async function handler(req, res) {
     async function worker() {
       while (idx < chunks.length && (Date.now() - started) < BUDGET_MS) {
         const c = chunks[idx++];
-        const r = await findChunk(c, wants);
+        const r = await findChunk(c, wants, geo);
         Object.assign(found, r);
       }
     }
@@ -222,6 +226,11 @@ export default async function handler(req, res) {
         else if (url) unpriced.push({ label: (s && s.label) || sellerFromUrl(url), url, kind, currency: s && s.currency });
       }
       if (wants.length) raw = raw.filter((s) => wants.includes(s.kind));
+      // Country constraint: keep only sources sold from a selected country's domain
+      // (URL host), falling back to the reported location text when there's no URL.
+      if (countryCodes.length) {
+        raw = raw.filter((s) => s.url ? hostInCountries(s.url, countryCodes) : locationInCountries(s.location, countryCodes));
+      }
 
       const seen = {}; const deduped = [];
       for (const s of raw) {
@@ -244,7 +253,8 @@ export default async function handler(req, res) {
       }
       const alts = raw.slice(0, 8).map((s, i) => ({ label: s.label + (s.location ? ' · ' + s.location : ''), price: Math.round(s.priceAud), best: i === 0, url: s.url, kind: s.kind, provider: 'claude' }));
       const part = { id: p.id, desc: p.desc, pn: p.pn, cat: p.cat || null, qty: p.qty, est, found: foundP, source, location, url: bestUrl, kind, matches: raw.length, status, saving, alts };
-      if (part.matches === 0 && unpriced.length) recoverQueue.push({ p: part, cands: unpriced.slice(0, 2) });
+      const unpricedOk = countryCodes.length ? unpriced.filter((s) => hostInCountries(s.url, countryCodes)) : unpriced;
+      if (part.matches === 0 && unpricedOk.length) recoverQueue.push({ p: part, cands: unpricedOk.slice(0, 2) });
       return part;
     });
 
