@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
-<script src="/assets/app.js?v=8" defer></script>
+<script src="/assets/app.js?v=9" defer></script>
 </head>
 <body>
 <header class="ps-header">
@@ -59,9 +59,16 @@
       <option value="gb">United Kingdom</option><option value="ca">Canada</option><option value="nz">New Zealand</option>
       <option value="de">Germany</option><option value="jp">Japan</option><option value="ae">United Arab Emirates</option>
     </select>
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">CATEGORIES</label>
+    <div style="font-size:12.5px;color:#6b7076;margin-bottom:11px">Results are grouped into these. Auto-drafted from your goal &mdash; add or remove any.</div>
+    <div id="eCats" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:11px"></div>
+    <div style="display:flex;gap:8px;margin-bottom:24px">
+      <input id="eNewCat" placeholder="Add a category&hellip;" style="flex:1;padding:11px 13px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:14px">
+      <div id="eAddCat" style="padding:11px 16px;border-radius:9px;border:1px solid #2a2e34;color:#e9ebed;font-weight:600;font-size:14px;cursor:pointer">Add</div>
+    </div>
     <div style="display:flex;align-items:flex-start;gap:10px;padding:13px 15px;background:rgba(255,90,44,.08);border:1px solid rgba(255,90,44,.22);border-radius:10px;margin-bottom:24px">
       <span style="color:#ff6a3d;font-size:15px;line-height:1.4">◆</span>
-      <span style="font-size:13px;color:#c8cccf;line-height:1.5">Updating re-drafts the search queries &amp; rules from your goal, then re-runs the hunt.</span>
+      <span style="font-size:13px;color:#c8cccf;line-height:1.5">Updating re-drafts the search queries &amp; rules from your goal (your categories are kept), then re-runs the hunt.</span>
     </div>
     <div style="display:flex;gap:12px">
       <div id="updateBtn" style="padding:13px 22px;border-radius:9px;font-weight:700;font-size:14.5px;cursor:pointer;background:#ff5a2c;color:#0d0e10">Update &amp; re-run &#8594;</div>
@@ -95,6 +102,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const $ = (i) => document.getElementById(i);
   let state = { project: null, listings: [], feedback: {}, category: 'All', sort: 'best' };
   const src = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
+  let editCats = [];
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
 
   const scoreStyle = (sc) => "font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" +
@@ -137,11 +145,18 @@ document.addEventListener('DOMContentLoaded', function () {
     }).join('');
     $('eSrc').querySelectorAll('.esrc').forEach((el) => el.addEventListener('click', () => { src[el.dataset.k] = !src[el.dataset.k]; drawSrc(); }));
   }
+  function drawECats() {
+    $('eCats').innerHTML = editCats.map((c, i) => '<span style="display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:20px;background:rgba(255,90,44,.12);border:1px solid rgba(255,90,44,.4);color:#ffb59c;font-size:13.5px;font-weight:600">' + PH.esc(c) + '<span class="ecx" data-i="' + i + '" style="cursor:pointer;color:#ff6a3d;font-size:15px;line-height:1">\u00d7</span></span>').join('') || '<span style="font-size:12.5px;color:#6b7076">No categories \u2014 results won\'t be grouped.</span>';
+    $('eCats').querySelectorAll('.ecx').forEach((el) => el.addEventListener('click', () => { editCats.splice(+el.dataset.i, 1); drawECats(); }));
+  }
+  $('eAddCat').addEventListener('click', () => { const v = $('eNewCat').value.trim(); if (v && editCats.indexOf(v) < 0) { editCats.push(v); $('eNewCat').value = ''; drawECats(); } });
+  $('eNewCat').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('eAddCat').click(); });
   function openEdit() {
     const c = state.project.config || {}, f = c.filters || {};
     $('eName').value = state.project.name || ''; $('eGoal').value = state.project.goal || '';
     src.oem_new = !!(f.oem_new || f.oem); src.oem_used = !!(f.oem_used || f.oem); src.aftermarket = !!f.aftermarket; src.salvage = !!f.salvage; drawSrc();
     $('eCountry').value = f.country || 'all';
+    editCats = (c.categories || []).slice(); drawECats();
     $('editPanel').style.display = 'block'; window.scrollTo({ top: 0, behavior: 'smooth' });
   }
   $('editBtn').addEventListener('click', () => { const open = $('editPanel').style.display === 'block'; if (open) $('editPanel').style.display = 'none'; else openEdit(); });
@@ -152,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const filters = { oem_new: src.oem_new, oem_used: src.oem_used, aftermarket: src.aftermarket, salvage: src.salvage, country: $('eCountry').value };
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Re-drafting and re-running… this can take a couple of minutes.</div>';
     try {
-      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, goal, config: { filters }, reexpand: true } });
+      await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, goal, config: { filters, categories: editCats }, reexpand: true } });
       await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
       const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
       state.project = data.project; state.listings = data.listings || []; state.feedback = fbMap(data.feedback);
@@ -163,6 +178,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   async function load() {
     try {
+      await PH.watch.load();
       const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
       state.project = data.project; state.listings = data.listings || []; state.feedback = fbMap(data.feedback);
       $('pName').textContent = state.project.name; $('pGoal').textContent = state.project.goal;
