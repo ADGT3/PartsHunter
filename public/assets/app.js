@@ -44,22 +44,54 @@
     return data;
   };
 
-  /* ---------- Watchlist (cross-project, localStorage) — replaces the old cart ---------- */
-  const WKEY = 'ps_watch';
+  /* ---------- Watchlist (server-side; persists across deploys & devices) ----------
+   * Sync API (has/list/toggle/remove/count) is backed by an in-memory cache that is loaded
+   * from /api/watchlist once per page (await PH.watch.load()). Writes are optimistic + write-through. */
+  const WKEY = 'ps_watch'; // legacy localStorage — migrated into the DB on first load
   PH.watch = {
-    list() { try { return JSON.parse(localStorage.getItem(WKEY)) || []; } catch (e) { return []; } },
-    save(items) { localStorage.setItem(WKEY, JSON.stringify(items)); },
-    has(url) { return this.list().some((i) => i.url === url); },
-    get(url) { return this.list().find((i) => i.url === url) || null; },
-    toggle(item) {
-      let items = this.list();
-      if (items.some((i) => i.url === item.url)) items = items.filter((i) => i.url !== item.url);
-      else items.unshift(Object.assign({ savedAt: Date.now() }, item));
-      this.save(items);
-      return items;
+    _items: [],
+    _loaded: false,
+    _loadPromise: null,
+    load() {
+      if (this._loadPromise) return this._loadPromise;
+      const self = this;
+      this._loadPromise = (async () => {
+        try { const d = await PH.api('/api/watchlist'); self._items = Array.isArray(d.items) ? d.items : []; }
+        catch (e) { self._items = []; }
+        // one-time migration of any legacy localStorage items into the DB
+        try {
+          const legacy = JSON.parse(localStorage.getItem(WKEY) || '[]');
+          if (Array.isArray(legacy) && legacy.length) {
+            for (const it of legacy) {
+              if (it && it.url && !self._items.some((i) => i.url === it.url)) {
+                self._items.unshift(it);
+                PH.api('/api/watchlist', { method: 'POST', body: { item: it, set: true } }).catch(() => {});
+              }
+            }
+            localStorage.removeItem(WKEY);
+          }
+        } catch (e) {}
+        self._loaded = true;
+        PH.updateWatchCount();
+        return self._items;
+      })();
+      return this._loadPromise;
     },
-    remove(url) { this.save(this.list().filter((i) => i.url !== url)); },
-    count() { return this.list().length; }
+    list() { return this._items; },
+    has(url) { return this._items.some((i) => i.url === url); },
+    get(url) { return this._items.find((i) => i.url === url) || null; },
+    toggle(item) {
+      const had = this.has(item.url);
+      if (had) this._items = this._items.filter((i) => i.url !== item.url);
+      else this._items.unshift(Object.assign({ savedAt: Date.now() }, item));
+      PH.api('/api/watchlist', { method: 'POST', body: { item: item, set: !had } }).catch(() => {});
+      return this._items;
+    },
+    remove(url) {
+      this._items = this._items.filter((i) => i.url !== url);
+      PH.api('/api/watchlist', { method: 'DELETE', body: { url: url } }).catch(() => {});
+    },
+    count() { return this._items.length; }
   };
 
   PH.updateWatchCount = function () {
@@ -68,4 +100,5 @@
   };
 
   window.PH = PH;
+  PH.watch.load(); // populate the nav count on every page
 })();
