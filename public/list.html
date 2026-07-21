@@ -74,7 +74,7 @@
     </div>
     <div id="eSummary" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b9096;margin:0 0 12px"></div>
     <div style="border:1px solid #23272c;border-radius:11px;overflow:hidden;margin-bottom:12px">
-      <div style="display:grid;grid-template-columns:1fr 130px 46px 92px 30px;gap:8px;padding:10px 12px;background:#0f1113;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076"><span>DESCRIPTION</span><span>PART NUMBER</span><span>QTY</span><span style="text-align:right">ESTIMATE</span><span></span></div>
+      <div style="display:grid;grid-template-columns:1fr 120px 104px 44px 84px 28px;gap:8px;padding:10px 12px;background:#0f1113;font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.08em;color:#6b7076"><span>DESCRIPTION</span><span>PART NUMBER</span><span>CATEGORY</span><span>QTY</span><span style="text-align:right">ESTIMATE</span><span></span></div>
       <div id="eRows" style="max-height:340px;overflow:auto"></div>
     </div>
     <div id="eAdd" style="display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:9px;border:1px dashed #2f343a;color:#8b9096;font-size:13px;font-weight:600;cursor:pointer;margin-bottom:22px">＋ Add a line</div>
@@ -108,11 +108,22 @@ document.addEventListener('DOMContentLoaded', async function () {
   const STAT = { saving: { label: 'SAVING', color: '#58c98a', bg: 'rgba(88,201,138,.13)' }, nocheaper: { label: 'OEM BEST', color: '#8b9096', bg: 'rgba(139,144,150,.12)' }, notfound: { label: 'NO MATCH', color: '#e0a53c', bg: 'rgba(224,165,60,.13)' } };
   const KIND = { oem_new: 'OEM NEW', oem_used: 'OEM USED', aftermarket: 'AFTERMKT', salvage: 'SALVAGE' };
   const NK = (k) => k === 'oem' ? 'oem_new' : (k || '');
+  const CATS = ['Front', 'Rear', 'Side', 'Interior', 'Structural', 'Other'];
+  function proposeCategory(desc) {
+    const d = ' ' + String(desc || '').toLowerCase() + ' ';
+    if (/interior|seat|dash|airbag|trim|carpet|console|steering|headliner|door card/.test(d)) return 'Interior';
+    if (/\/f\b|\bfront\b|bonnet|hood|headl|grille|radiator|intercooler|splitter|air (duct|guide)/.test(d)) return 'Front';
+    if (/\/r\b|\brear\b|boot|trunk|tailgate|taillamp|tail lamp|diffuser|exhaust|muffler/.test(d)) return 'Rear';
+    if (/door|sill|rocker|mirror|quarter|\bwing\b|side skirt|fender|guard/.test(d)) return 'Side';
+    if (/chassis|frame|rail|pillar|subframe|cross ?member|floor|structural|reinforce|inner panel|apron/.test(d)) return 'Structural';
+    return 'Other';
+  }
+  const catOf = (p) => (p && p.cat) ? p.cat : proposeCategory(p && p.desc);
   const voteStyle = (on, kind) => { const b = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .12s;"; if (on && kind === 'up') return b + "background:rgba(88,201,138,.16);border:1px solid #58c98a;color:#58c98a;"; if (on && kind === 'down') return b + "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;"; return b + "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;"; };
   const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
   const delStyle = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;transition:all .12s;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;";
   const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
-  let data = null, sfilter = 'all', kfilter = 'all', open = {}, feedback = {}, editLines = [];
+  let data = null, sfilter = 'all', kfilter = 'all', cfilter = 'all', open = {}, feedback = {}, editLines = [];
   const esrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
   const SRC = [['oem_new', 'OEM parts (New)'], ['oem_used', 'OEM parts (Used)'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
@@ -147,10 +158,12 @@ document.addEventListener('DOMContentLoaded', async function () {
   function renderEditList() {
     const inp = "width:100%;box-sizing:border-box;background:#0f1113;border:1px solid #23272c;border-radius:7px;color:#e9ebed;font-size:12.5px;padding:7px 9px;outline:none;";
     const mono = inp + "font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#c8cccf;";
+    const sel = "width:100%;box-sizing:border-box;background:#0f1113;border:1px solid #23272c;border-radius:7px;color:#c8cccf;font-size:11px;padding:6px 5px;outline:none;font-family:'JetBrains Mono',monospace;";
     $('eRows').innerHTML = editLines.map((l, i) =>
-      '<div class="erow" data-i="' + i + '" style="display:grid;grid-template-columns:1fr 130px 46px 92px 30px;gap:8px;padding:8px 12px;border-top:1px solid #1c1f23;align-items:center">' +
+      '<div class="erow" data-i="' + i + '" style="display:grid;grid-template-columns:1fr 120px 104px 44px 84px 28px;gap:8px;padding:8px 12px;border-top:1px solid #1c1f23;align-items:center">' +
         '<input class="ed" data-f="desc" value="' + PH.esc(l.desc == null ? '' : l.desc) + '" style="' + inp + '">' +
         '<input class="ed" data-f="pn" value="' + PH.esc(l.pn == null ? '' : l.pn) + '" style="' + mono + '">' +
+        '<select class="ecat" style="' + sel + '">' + CATS.map((c) => '<option value="' + c + '"' + (((l.cat || proposeCategory(l.desc)) === c) ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
         '<input class="ed" data-f="qty" value="' + PH.esc(l.qty == null ? '' : l.qty) + '" style="' + mono + 'text-align:center">' +
         '<input class="ed" data-f="est" value="' + PH.esc(l.est == null ? '' : l.est) + '" style="' + mono + 'text-align:right">' +
         '<div class="edel" title="Remove line" style="width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#8b9096;background:#0f1113;border:1px solid #2a2e34">×</div>' +
@@ -160,6 +173,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       const i = +row.dataset.i;
       row.querySelectorAll('.ed').forEach((el) => el.addEventListener('input', () => { editLines[i][el.dataset.f] = el.value; editSummary(); }));
       const del = row.querySelector('.edel'); if (del) del.addEventListener('click', () => { editLines.splice(i, 1); renderEditList(); });
+      const ec = row.querySelector('.ecat'); if (ec) ec.addEventListener('change', () => { editLines[i].cat = ec.value; });
     });
     editSummary();
   }
@@ -228,7 +242,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   $('updateBtn').addEventListener('click', async () => {
     const name = $('eName').value.trim();
     if (!name) { $('editMsg').innerHTML = '<div class="banner err">Name is required.</div>'; return; }
-    const lines = editLines.map((l, i) => ({ id: 'L' + (i + 1), desc: (l.desc || '').toString().trim(), pn: (l.pn || '').toString().trim(), qty: numOrNull(l.qty), est: numOrNull(l.est) })).filter((l) => l.desc || l.pn);
+    const lines = editLines.map((l, i) => ({ id: 'L' + (i + 1), desc: (l.desc || '').toString().trim(), pn: (l.pn || '').toString().trim(), cat: (l.cat || proposeCategory(l.desc)), qty: numOrNull(l.qty), est: numOrNull(l.est) })).filter((l) => l.desc || l.pn);
     if (!lines.length) { $('editMsg').innerHTML = '<div class="banner err">Add at least one part (a description or part number).</div>'; return; }
     const filters = { oem_new: esrc.oem_new, oem_used: esrc.oem_used, aftermarket: esrc.aftermarket, salvage: esrc.salvage };
     const config = { kind: 'list', currency: $('eCur').value, filters, partsList: lines, results: null, totals: null };
@@ -341,6 +355,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const pct = t.estTotal ? Math.round(t.saveTotal / t.estTotal * 100) : 0, r = data.results;
     const sc = { all: r.length, saving: r.filter((x) => x.status === 'saving').length, nocheaper: r.filter((x) => x.status === 'nocheaper').length, notfound: r.filter((x) => x.status === 'notfound').length };
     const kc = { all: r.length, oem_new: r.filter((x) => NK(x.kind) === 'oem_new').length, oem_used: r.filter((x) => NK(x.kind) === 'oem_used').length, aftermarket: r.filter((x) => x.kind === 'aftermarket').length, salvage: r.filter((x) => x.kind === 'salvage').length };
+    const cc = { all: r.length }; CATS.forEach((c) => { cc[c] = r.filter((x) => catOf(x) === c).length; });
     body.innerHTML =
       '<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="btn grey" id="rehunt">&#8635; Re-hunt all parts</button></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">' +
@@ -349,18 +364,29 @@ document.addEventListener('DOMContentLoaded', async function () {
         '<div style="padding:18px 20px;border:1px solid rgba(88,201,138,.35);border-radius:13px;background:linear-gradient(120deg,rgba(88,201,138,.12),rgba(88,201,138,.02))"><div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;letter-spacing:.1em;color:#58c98a;margin-bottom:8px">POTENTIAL SAVING</div><div style="display:flex;align-items:baseline;gap:9px"><div style="font-family:Archivo,sans-serif;font-weight:800;font-size:27px;color:#58c98a">' + money(t.saveTotal) + '</div><div style="font-family:\'JetBrains Mono\',monospace;font-size:13px;color:#58c98a">−' + pct + '%</div></div></div>' +
       '</div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Status</span><span id="schips">' + chip('s', 'all', sfilter, 'All', sc.all) + chip('s', 'saving', sfilter, 'Savings', sc.saving) + chip('s', 'nocheaper', sfilter, 'OEM best', sc.nocheaper) + chip('s', 'notfound', sfilter, 'No match', sc.notfound) + '</span></div>' +
+      '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Location</span><span id="cchips">' + chip('c', 'all', cfilter, 'All', cc.all) + CATS.filter((c) => cc[c]).map((c) => chip('c', c, cfilter, c, cc[c])).join('') + '</span></div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem_new', kfilter, 'OEM New', kc.oem_new) + chip('k', 'oem_used', kfilter, 'OEM Used', kc.oem_used) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span><div style="flex:1"></div><span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#6b7076">Rate results to sharpen the next run &#8594;</span></div>' +
       '<div id="rows" style="display:flex;flex-direction:column;gap:12px"></div>';
     const rh = $('rehunt'); if (rh) rh.addEventListener('click', runHunt);
     document.querySelectorAll('#schips .schip').forEach((el) => el.addEventListener('click', () => { sfilter = el.dataset.v; render(); }));
     document.querySelectorAll('#kchips .kchip').forEach((el) => el.addEventListener('click', () => { kfilter = el.dataset.v; render(); }));
+    document.querySelectorAll('#cchips .cchip').forEach((el) => el.addEventListener('click', () => { cfilter = el.dataset.v; render(); }));
     drawRows();
   }
 
+  function catHeader(cat, n, est, found, save) {
+    return '<div style="display:flex;align-items:center;gap:12px;margin:6px 2px 0;padding-top:4px">' +
+      '<div style="font-family:Archivo,sans-serif;font-weight:700;font-size:15px">' + PH.esc(cat) + '</div>' +
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#6b7076">' + n + ' part' + (n === 1 ? '' : 's') + '</div>' +
+      '<div style="flex:1;height:1px;background:#1c1f23"></div>' +
+      '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#9aa0a6">' + money(est) + ' &#8594; <span style="color:#e9ebed">' + money(found) + '</span>' + (save > 0 ? ' <span style="color:#58c98a">&#8722;' + money(save) + '</span>' : '') + '</div></div>';
+  }
   function drawRows() {
-    const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || NK(p.kind) === kfilter));
+    const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || NK(p.kind) === kfilter) && (cfilter === 'all' || catOf(p) === cfilter));
     const el = $('rows');
-    el.innerHTML = shown.map(rowHtml).join('') || '<div class="banner">Nothing in this filter.</div>';
+    if (!shown.length) { el.innerHTML = '<div class="banner">Nothing in this filter.</div>'; return; }
+    const groups = {}; shown.forEach((p) => { const c = catOf(p); (groups[c] = groups[c] || []).push(p); });
+    el.innerHTML = CATS.filter((c) => groups[c]).map((c) => { const ps = groups[c]; const eS = ps.reduce((n, p) => n + (p.est || 0), 0), fS = ps.reduce((n, p) => n + (p.found != null ? p.found : (p.est || 0)), 0), sS = ps.reduce((n, p) => n + (p.saving || 0), 0); return catHeader(c, ps.length, eS, fS, sS) + ps.map(rowHtml).join(''); }).join('');
     el.querySelectorAll('[data-id]').forEach((wrap) => {
       const p = data.results.find((x) => x.id === wrap.dataset.id);
       const stop = (e) => { e.preventDefault(); e.stopPropagation(); };

@@ -170,6 +170,15 @@ document.addEventListener('DOMContentLoaded', function () {
   $('dropZone').addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) parseFile(e.dataTransfer.files[0]); });
   fileInput.addEventListener('change', (e) => { if (e.target.files[0]) parseFile(e.target.files[0]); });
 
+  function proposeCategory(desc) {
+    const d = ' ' + String(desc || '').toLowerCase() + ' ';
+    if (/interior|seat|dash|airbag|trim|carpet|console|steering|headliner|door card/.test(d)) return 'Interior';
+    if (/\/f\b|\bfront\b|bonnet|hood|headl|grille|radiator|intercooler|splitter|air (duct|guide)/.test(d)) return 'Front';
+    if (/\/r\b|\brear\b|boot|trunk|tailgate|taillamp|tail lamp|diffuser|exhaust|muffler/.test(d)) return 'Rear';
+    if (/door|sill|rocker|mirror|quarter|\bwing\b|side skirt|fender|guard/.test(d)) return 'Side';
+    if (/chassis|frame|rail|pillar|subframe|cross ?member|floor|structural|reinforce|inner panel|apron/.test(d)) return 'Structural';
+    return 'Other';
+  }
   function num(v) { if (v == null || v === '') return null; const n = parseFloat(String(v).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? null : n; }
   function rowsToLines(rows) {
     let hi = -1, col = {};
@@ -200,6 +209,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const wb = ext === 'csv' ? XLSX.read(e.target.result, { type: 'string' }) : XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
         const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, blankrows: false });
         const lines = rowsToLines(rows);
+        lines.forEach((l) => { l.cat = proposeCategory(l.desc); });
         if (!lines.length) { $('listMsg').innerHTML = '<div class="banner err">Couldn\'t find Description / Part Number columns.</div>'; return; }
         parsed = { name: file.name.replace(/\.(xlsx|csv)$/i, ''), lines }; showPreview(file.name);
       } catch (err) { $('listMsg').innerHTML = '<div class="banner err">Could not read that file: ' + PH.esc(err.message) + '</div>'; }
