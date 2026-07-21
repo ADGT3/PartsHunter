@@ -103,16 +103,28 @@
    * Keep this list + ccTLDs in sync with /api/_geo.js. "Source country" = where the
    * part is sold from (seller's own domain), not where it ships to. None selected = all. */
   PH.COUNTRIES = [
-    { code: 'gb', label: 'United Kingdom' },
-    { code: 'ie', label: 'Ireland' },
+    { code: 'au', label: 'Australia' },
+    { code: 'be', label: 'Belgium' },
+    { code: 'ca', label: 'Canada' },
+    { code: 'fr', label: 'France' },
+    { code: 'de', label: 'Germany' },
     { code: 'in', label: 'India' },
+    { code: 'ie', label: 'Ireland' },
+    { code: 'it', label: 'Italy' },
     { code: 'jp', label: 'Japan' },
     { code: 'my', label: 'Malaysia' },
+    { code: 'nl', label: 'Netherlands' },
+    { code: 'nz', label: 'New Zealand' },
     { code: 'sg', label: 'Singapore' },
-    { code: 'au', label: 'Australia' },
-    { code: 'nz', label: 'New Zealand' }
+    { code: 'es', label: 'Spain' },
+    { code: 'se', label: 'Sweden' },
+    { code: 'ch', label: 'Switzerland' },
+    { code: 'ae', label: 'United Arab Emirates' },
+    { code: 'gb', label: 'United Kingdom' },
+    { code: 'us', label: 'United States' }
   ];
-  PH._ccTLDs = { gb: ['.co.uk', '.uk'], ie: ['.ie'], in: ['.in'], jp: ['.jp', '.co.jp'], my: ['.com.my', '.my'], sg: ['.com.sg', '.sg'], au: ['.com.au', '.au'], nz: ['.co.nz', '.nz'] };
+  // US uses generic .com (no common US ccTLD) — matched on .com/.us as a "likely US" heuristic.
+  PH._ccTLDs = { au: ['.com.au', '.au'], be: ['.be'], ca: ['.ca'], fr: ['.fr'], de: ['.de'], in: ['.in'], ie: ['.ie'], it: ['.it'], jp: ['.jp', '.co.jp'], my: ['.com.my', '.my'], nl: ['.nl'], nz: ['.co.nz', '.nz'], sg: ['.com.sg', '.sg'], es: ['.es'], se: ['.se'], ch: ['.ch'], ae: ['.ae'], gb: ['.co.uk', '.uk'], us: ['.com', '.us'] };
   PH.countryLabel = (code) => { const c = PH.COUNTRIES.find((x) => x.code === code); return c ? c.label : code; };
 
   // Read filters into a clean array of codes (array shape + legacy string; [] = all).
