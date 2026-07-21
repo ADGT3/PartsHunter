@@ -6,15 +6,28 @@
  *
  * Keep the codes here in sync with the frontend picker in /public/assets/app.js. */
 
+// NOTE: the US uses generic .com (there is no widely-used US ccTLD), so US is matched
+// on .com / .us as a "likely US market" heuristic — some non-US .com sellers will pass.
 export const COUNTRIES = [
-  { code: 'gb', label: 'United Kingdom', name: 'the United Kingdom', tlds: ['.co.uk', '.uk'] },
-  { code: 'ie', label: 'Ireland', name: 'Ireland', tlds: ['.ie'] },
+  { code: 'au', label: 'Australia', name: 'Australia', tlds: ['.com.au', '.au'] },
+  { code: 'be', label: 'Belgium', name: 'Belgium', tlds: ['.be'] },
+  { code: 'ca', label: 'Canada', name: 'Canada', tlds: ['.ca'] },
+  { code: 'fr', label: 'France', name: 'France', tlds: ['.fr'] },
+  { code: 'de', label: 'Germany', name: 'Germany', tlds: ['.de'] },
   { code: 'in', label: 'India', name: 'India', tlds: ['.in'] },
+  { code: 'ie', label: 'Ireland', name: 'Ireland', tlds: ['.ie'] },
+  { code: 'it', label: 'Italy', name: 'Italy', tlds: ['.it'] },
   { code: 'jp', label: 'Japan', name: 'Japan', tlds: ['.jp', '.co.jp'] },
   { code: 'my', label: 'Malaysia', name: 'Malaysia', tlds: ['.com.my', '.my'] },
+  { code: 'nl', label: 'Netherlands', name: 'the Netherlands', tlds: ['.nl'] },
+  { code: 'nz', label: 'New Zealand', name: 'New Zealand', tlds: ['.co.nz', '.nz'] },
   { code: 'sg', label: 'Singapore', name: 'Singapore', tlds: ['.com.sg', '.sg'] },
-  { code: 'au', label: 'Australia', name: 'Australia', tlds: ['.com.au', '.au'] },
-  { code: 'nz', label: 'New Zealand', name: 'New Zealand', tlds: ['.co.nz', '.nz'] }
+  { code: 'es', label: 'Spain', name: 'Spain', tlds: ['.es'] },
+  { code: 'se', label: 'Sweden', name: 'Sweden', tlds: ['.se'] },
+  { code: 'ch', label: 'Switzerland', name: 'Switzerland', tlds: ['.ch'] },
+  { code: 'ae', label: 'United Arab Emirates', name: 'the United Arab Emirates', tlds: ['.ae'] },
+  { code: 'gb', label: 'United Kingdom', name: 'the United Kingdom', tlds: ['.co.uk', '.uk'] },
+  { code: 'us', label: 'United States', name: 'the United States', tlds: ['.com', '.us'] }
 ];
 
 const BY_CODE = {};
@@ -23,14 +36,25 @@ for (const c of COUNTRIES) BY_CODE[c.code] = c;
 // Location-text aliases so an unpriced source (URL-less) can still be matched
 // against its reported "location" string when a country filter is active.
 const ALIASES = {
-  gb: ['united kingdom', 'uk', 'u.k', 'britain', 'england', 'scotland', 'wales', 'northern ireland'],
-  ie: ['ireland', 'eire', 'republic of ireland'],
+  au: ['australia', 'aus'],
+  be: ['belgium', 'belgie', 'belgië', 'belgique'],
+  ca: ['canada'],
+  fr: ['france'],
+  de: ['germany', 'deutschland'],
   in: ['india'],
+  ie: ['ireland', 'eire', 'republic of ireland'],
+  it: ['italy', 'italia'],
   jp: ['japan', 'nippon'],
   my: ['malaysia'],
+  nl: ['netherlands', 'holland', 'the netherlands'],
+  nz: ['new zealand', 'aotearoa'],
   sg: ['singapore'],
-  au: ['australia', 'aus'],
-  nz: ['new zealand', 'nz', 'aotearoa']
+  es: ['spain', 'espana', 'españa'],
+  se: ['sweden', 'sverige'],
+  ch: ['switzerland', 'schweiz', 'suisse', 'svizzera'],
+  ae: ['united arab emirates', 'uae', 'u.a.e', 'dubai', 'abu dhabi'],
+  gb: ['united kingdom', 'uk', 'u.k', 'britain', 'england', 'scotland', 'wales', 'northern ireland'],
+  us: ['united states', 'usa', 'u.s', 'u.s.a', 'america']
 };
 
 /* Normalize the filters into a clean array of valid country codes.
