@@ -58,7 +58,7 @@ export default async function handler(req, res) {
           const prev = (cur[0] && cur[0].config) || {};
           config = {
             ...prev,
-            categories: Array.isArray(ex.categories) ? ex.categories : (prev.categories || []),
+            categories: (body.config && Array.isArray(body.config.categories)) ? body.config.categories : (Array.isArray(ex.categories) ? ex.categories : (prev.categories || [])),
             queries: Array.isArray(ex.queries) ? ex.queries : (prev.queries || []),
             rules: Array.isArray(ex.rules) ? ex.rules : (prev.rules || []),
             filters: (body.config && body.config.filters) || prev.filters || {}
