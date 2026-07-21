@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
-<script src="/assets/app.js?v=9" defer></script>
+<script src="/assets/app.js?v=10" defer></script>
 </head>
 <body>
 <header class="ps-header">
@@ -54,11 +54,8 @@
     <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES</label>
     <div id="eSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px"></div>
     <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">COUNTRY</label>
-    <select id="eCountry" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:24px">
-      <option value="all">All countries</option><option value="au">Australia</option><option value="us">United States</option>
-      <option value="gb">United Kingdom</option><option value="ca">Canada</option><option value="nz">New Zealand</option>
-      <option value="de">Germany</option><option value="jp">Japan</option><option value="ae">United Arab Emirates</option>
-    </select>
+    <div id="eCountry" style="margin-bottom:6px"></div>
+    <div style="font-size:12.5px;color:#6b7076;margin-bottom:24px">Pick one or more countries to hunt only sellers on those countries' sites. Leave empty for all countries.</div>
     <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">CATEGORIES</label>
     <div style="font-size:12.5px;color:#6b7076;margin-bottom:11px">Results are grouped into these. Auto-drafted from your goal &mdash; add or remove any.</div>
     <div id="eCats" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:11px"></div>
@@ -80,6 +77,9 @@
   <div id="catRow" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;margin:22px 0 14px">
     <span style="font-size:12.5px;color:#6b7076;margin-right:2px">Category</span><span id="catChips"></span>
   </div>
+  <div id="countryRow" style="display:none;align-items:center;flex-wrap:wrap;gap:8px;margin:0 0 14px">
+    <span style="font-size:12.5px;color:#6b7076;margin-right:2px">Country</span><span id="countryChips"></span>
+  </div>
   <div id="sortRow" style="display:none;align-items:center;flex-wrap:wrap;gap:10px;margin:0 0 22px">
     <span style="font-size:12.5px;color:#6b7076">Sort</span><span id="sortChips"></span>
     <div style="flex:1"></div>
@@ -100,8 +100,9 @@ document.addEventListener('DOMContentLoaded', function () {
   if (!id) { document.getElementById('pName').textContent = 'Missing project id'; return; }
   PH.updateWatchCount();
   const $ = (i) => document.getElementById(i);
-  let state = { project: null, listings: [], feedback: {}, category: 'All', sort: 'best' };
+  let state = { project: null, listings: [], feedback: {}, category: 'All', sort: 'best', countries: [] };
   const src = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
+  const ecountry = {};
   let editCats = [];
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
 
@@ -151,11 +152,14 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   $('eAddCat').addEventListener('click', () => { const v = $('eNewCat').value.trim(); if (v && editCats.indexOf(v) < 0) { editCats.push(v); $('eNewCat').value = ''; drawECats(); } });
   $('eNewCat').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('eAddCat').click(); });
+  const ePick = PH.countryPicker('eCountry', ecountry);
   function openEdit() {
     const c = state.project.config || {}, f = c.filters || {};
     $('eName').value = state.project.name || ''; $('eGoal').value = state.project.goal || '';
     src.oem_new = !!(f.oem_new || f.oem); src.oem_used = !!(f.oem_used || f.oem); src.aftermarket = !!f.aftermarket; src.salvage = !!f.salvage; drawSrc();
-    $('eCountry').value = f.country || 'all';
+    PH.COUNTRIES.forEach((cc) => { ecountry[cc.code] = false; });
+    PH.normCountries(f).forEach((code) => { ecountry[code] = true; });
+    if (ePick) ePick.refresh();
     editCats = (c.categories || []).slice(); drawECats();
     $('editPanel').style.display = 'block'; window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -164,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('updateBtn').addEventListener('click', async () => {
     const name = $('eName').value.trim(), goal = $('eGoal').value.trim();
     if (!name || !goal) { $('editMsg').innerHTML = '<div class="banner err">Name and goal are required.</div>'; return; }
-    const filters = { oem_new: src.oem_new, oem_used: src.oem_used, aftermarket: src.aftermarket, salvage: src.salvage, country: $('eCountry').value };
+    const filters = { oem_new: src.oem_new, oem_used: src.oem_used, aftermarket: src.aftermarket, salvage: src.salvage, countries: ePick ? ePick.selected() : [] };
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Re-drafting and re-running… this can take a couple of minutes.</div>';
     try {
       await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, goal, config: { filters, categories: editCats }, reexpand: true } });
@@ -205,11 +209,30 @@ document.addEventListener('DOMContentLoaded', function () {
     }).join(' ');
     $('catChips').querySelectorAll('.jchip').forEach((el) => el.addEventListener('click', () => { state.category = el.dataset.cat; render(); }));
 
+    // Country filter (multi-select) — by seller domain of each listing's URL.
+    const ccounts = {};
+    PH.COUNTRIES.forEach((cc) => { ccounts[cc.code] = state.listings.filter((l) => PH.hostInCountries(l.url, [cc.code])).length; });
+    const present = PH.COUNTRIES.filter((cc) => ccounts[cc.code] > 0);
+    state.countries = state.countries.filter((code) => ccounts[code] > 0);
+    if (present.length) {
+      $('countryRow').style.display = 'flex';
+      const numSt = 'font-family:\'JetBrains Mono\',monospace;font-size:11px;opacity:.7';
+      const cchips = ['<span class="ccchip" data-c="all" style="' + catChipStyle(!state.countries.length) + '">All <span style="' + numSt + '">' + state.listings.length + '</span></span>']
+        .concat(present.map((cc) => '<span class="ccchip" data-c="' + cc.code + '" style="' + catChipStyle(state.countries.indexOf(cc.code) !== -1) + '">' + PH.esc(cc.label) + ' <span style="' + numSt + '">' + ccounts[cc.code] + '</span></span>'));
+      $('countryChips').innerHTML = cchips.join(' ');
+      $('countryChips').querySelectorAll('.ccchip').forEach((el) => el.addEventListener('click', () => {
+        const c = el.dataset.c;
+        if (c === 'all') state.countries = [];
+        else { const i = state.countries.indexOf(c); if (i === -1) state.countries.push(c); else state.countries.splice(i, 1); }
+        render();
+      }));
+    } else { $('countryRow').style.display = 'none'; state.countries = []; }
+
     const sorts = [['best', 'Best match'], ['new', 'Newest'], ['price', 'Lowest price']];
     $('sortChips').innerHTML = sorts.map((s) => '<span class="schip" data-s="' + s[0] + '" style="' + sortChipStyle(state.sort === s[0]) + '">' + s[1] + '</span>').join(' ');
     $('sortChips').querySelectorAll('.schip').forEach((el) => el.addEventListener('click', () => { state.sort = el.dataset.s; render(); }));
 
-    let shown = state.listings.filter((l) => state.category === 'All' || l._cat === state.category);
+    let shown = state.listings.filter((l) => (state.category === 'All' || l._cat === state.category) && (!state.countries.length || PH.hostInCountries(l.url, state.countries)));
     const pn = (l) => (l.price_num == null ? Infinity : Number(l.price_num));
     if (state.sort === 'best') shown = shown.slice().sort((a, b) => scoreOf(b) - scoreOf(a));
     else if (state.sort === 'new') shown = shown.slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));

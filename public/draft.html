@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
-<script src="/assets/app.js?v=9" defer></script>
+<script src="/assets/app.js?v=10" defer></script>
 </head>
 <body>
 <header class="ps-header">
@@ -83,8 +83,8 @@ document.addEventListener('DOMContentLoaded', async function () {
   PH.updateWatchCount();
   const id = PH.qs('id'), isNew = PH.qs('new') === '1';
   const $ = (i) => document.getElementById(i);
-  const COUNTRY = { all: 'worldwide', au: 'Australia', us: 'United States', gb: 'United Kingdom', ca: 'Canada', nz: 'New Zealand', de: 'Germany', jp: 'Japan', ae: 'UAE' };
-  let project = null, queries = [], rules = [], categories = [], country = 'all';
+  const countriesLabel = (codes) => (codes && codes.length) ? codes.map((c) => PH.countryLabel(c)).join(', ') : 'worldwide';
+  let project = null, queries = [], rules = [], categories = [], countries = [];
 
   $('kicker').textContent = isNew ? '// DRAFT READY — REVIEW & RUN' : '// EDIT SEARCH';
   $('runReady').textContent = isNew ? 'Ready to run' : 'Ready to update';
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   }
   function summary() {
     const active = rules.filter((r) => r.on).length;
-    $('summary').textContent = queries.length + ' queries · ' + active + ' rules · ' + (COUNTRY[country] || country);
+    $('summary').textContent = queries.length + ' queries · ' + active + ' rules · ' + countriesLabel(countries);
   }
 
   function drawCats() {
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     queries = (c.queries || []).slice();
     rules = (c.rules || []).map((r) => ({ label: r, on: true }));
     categories = (c.categories || []).slice();
-    country = (c.filters && c.filters.country) || 'all';
+    countries = PH.normCountries(c.filters);
     drawQueries(); drawRules(); drawCats(); summary();
   } catch (e) { $('pName').textContent = 'Could not load draft'; $('msg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
 });

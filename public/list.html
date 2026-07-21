@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="/assets/app.js?v=9" defer></script>
+<script src="/assets/app.js?v=10" defer></script>
 </head>
 <body>
 <header class="ps-header">
@@ -65,6 +65,10 @@
       <option value="NZD">NZD — New Zealand dollar</option>
     </select>
     <div style="font-size:12.5px;color:#6b7076;margin-bottom:22px">Your estimate is treated as AUD unless you pick another currency here — everything is converted to AUD for the comparison.</div>
+
+    <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">COUNTRY</label>
+    <div id="eCountry" style="margin-bottom:6px"></div>
+    <div style="font-size:12.5px;color:#6b7076;margin-bottom:22px">Pick one or more countries to hunt only sellers on those countries' sites. Leave empty for all countries.</div>
 
     <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">PARTS LIST</label>
     <div id="eDrop" style="display:flex;align-items:center;gap:12px;padding:14px 16px;border:1.5px dashed #2f343a;border-radius:11px;cursor:pointer;color:#8b9096;margin-bottom:14px">
@@ -123,8 +127,9 @@ document.addEventListener('DOMContentLoaded', async function () {
   const saveStyle = (on) => "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;transition:all .12s;" + (on ? "background:rgba(255,90,44,.16);border:1px solid #ff5a2c;color:#ff6a3d;" : "background:#0f1113;border:1px solid #2a2e34;color:#6b7076;");
   const delStyle = "width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;transition:all .12s;background:#0f1113;border:1px solid #2a2e34;color:#8b9096;";
   const badge = (label, color, bg) => "font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.06em;padding:3px 8px;border-radius:6px;flex-shrink:0;color:" + color + ";background:" + bg + ";";
-  let data = null, sfilter = 'all', kfilter = 'all', cfilter = 'all', open = {}, feedback = {}, editLines = [];
+  let data = null, sfilter = 'all', kfilter = 'all', cfilter = 'all', countryFilter = [], open = {}, feedback = {}, editLines = [];
   const esrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
+  const ecountry = {};
   const SRC = [['oem_new', 'OEM parts (New)'], ['oem_used', 'OEM parts (Used)'], ['aftermarket', 'Aftermarket'], ['salvage', 'Salvage vehicles']];
   const fbMap = (arr) => { const m = {}; (arr || []).forEach((f) => (m[f.listing_url] = f.vote)); return m; };
   const keyOf = (p, a) => a.url || ('psrc:' + (p.pn || p.id) + ':' + (a.label || ''));
@@ -224,6 +229,7 @@ document.addEventListener('DOMContentLoaded', async function () {
   $('eFile').addEventListener('change', (e) => { if (e.target.files[0]) parseEditFile(e.target.files[0]); });
   $('eAdd').addEventListener('click', () => { editLines.push({ desc: '', pn: '', qty: null, est: null }); renderEditList(); });
   $('eCur').addEventListener('change', editSummary);
+  const ePick = PH.countryPicker('eCountry', ecountry);
 
   function openEdit() {
     if (!data) return;
@@ -231,6 +237,9 @@ document.addEventListener('DOMContentLoaded', async function () {
     $('eName').value = data.project.name || '';
     esrc.oem_new = !!(f.oem_new || f.oem); esrc.oem_used = !!(f.oem_used || f.oem); esrc.aftermarket = !!f.aftermarket; esrc.salvage = !!f.salvage; drawESrc();
     $('eCur').value = data.currency || 'AUD';
+    PH.COUNTRIES.forEach((cc) => { ecountry[cc.code] = false; });
+    PH.normCountries(f).forEach((code) => { ecountry[code] = true; });
+    if (ePick) ePick.refresh();
     editLines = (data.partsList || []).map((l) => ({ desc: l.desc, pn: l.pn, qty: l.qty, est: l.est }));
     renderEditList();
     $('eFile').value = ''; $('editMsg').innerHTML = '';
@@ -244,7 +253,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (!name) { $('editMsg').innerHTML = '<div class="banner err">Name is required.</div>'; return; }
     const lines = editLines.map((l, i) => ({ id: 'L' + (i + 1), desc: (l.desc || '').toString().trim(), pn: (l.pn || '').toString().trim(), cat: (l.cat || proposeCategory(l.desc)), qty: numOrNull(l.qty), est: numOrNull(l.est) })).filter((l) => l.desc || l.pn);
     if (!lines.length) { $('editMsg').innerHTML = '<div class="banner err">Add at least one part (a description or part number).</div>'; return; }
-    const filters = { oem_new: esrc.oem_new, oem_used: esrc.oem_used, aftermarket: esrc.aftermarket, salvage: esrc.salvage };
+    const filters = { oem_new: esrc.oem_new, oem_used: esrc.oem_used, aftermarket: esrc.aftermarket, salvage: esrc.salvage, countries: ePick ? ePick.selected() : [] };
     const config = { kind: 'list', currency: $('eCur').value, filters, partsList: lines, results: null, totals: null, manualSources: data.manualSources || {} };
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Saving and re-hunting ' + lines.length + ' parts — this can take a couple of minutes.</div>';
     try {
@@ -281,6 +290,18 @@ document.addEventListener('DOMContentLoaded', async function () {
     const on = cur === val;
     const style = 'display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;' + (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:transparent;border:1px solid #23272c;color:#8b9096;');
     return '<span class="' + kind + 'chip" data-v="' + val + '" style="' + style + '">' + label + (n != null ? ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;opacity:.7">' + n + '</span>' : '') + '</span>';
+  }
+  // Multi-select chip (used for the Country results filter) — `on` passed explicitly.
+  function mchip(val, on, label, n) {
+    const style = 'display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;' + (on ? 'background:rgba(255,90,44,.13);border:1px solid #ff5a2c;color:#ffb59c;' : 'background:transparent;border:1px solid #23272c;color:#8b9096;');
+    return '<span class="ctrychip" data-v="' + val + '" style="' + style + '">' + label + (n != null ? ' <span style="font-family:\'JetBrains Mono\',monospace;font-size:11px;opacity:.7">' + n + '</span>' : '') + '</span>';
+  }
+  // Is a part sourced from any of the selected countries (by any alt/best seller domain)?
+  function partInCountries(p, codes) {
+    if (!codes || !codes.length) return true;
+    const alts = (p && p.alts) || [];
+    for (const a of alts) if (a && a.url && PH.hostInCountries(a.url, codes)) return true;
+    return !!(p && p.url && PH.hostInCountries(p.url, codes));
   }
 
   function sourceCard(p, a) {
@@ -356,6 +377,14 @@ document.addEventListener('DOMContentLoaded', async function () {
     const sc = { all: r.length, saving: r.filter((x) => x.status === 'saving').length, nocheaper: r.filter((x) => x.status === 'nocheaper').length, notfound: r.filter((x) => x.status === 'notfound').length };
     const kc = { all: r.length, oem_new: r.filter((x) => NK(x.kind) === 'oem_new').length, oem_used: r.filter((x) => NK(x.kind) === 'oem_used').length, aftermarket: r.filter((x) => x.kind === 'aftermarket').length, salvage: r.filter((x) => x.kind === 'salvage').length };
     const cc = { all: r.length }; CATS.forEach((c) => { cc[c] = r.filter((x) => catOf(x) === c).length; });
+    const ctc = {}; PH.COUNTRIES.forEach((c) => { ctc[c.code] = r.filter((x) => partInCountries(x, [c.code])).length; });
+    const ctPresent = PH.COUNTRIES.filter((c) => ctc[c.code] > 0);
+    countryFilter = countryFilter.filter((code) => ctc[code] > 0);
+    const countryRowHtml = ctPresent.length
+      ? '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Country</span><span id="ctrychips">' +
+        mchip('all', !countryFilter.length, 'All', r.length) +
+        ctPresent.map((c) => mchip(c.code, countryFilter.indexOf(c.code) !== -1, c.label, ctc[c.code])).join('') + '</span></div>'
+      : '';
     body.innerHTML =
       '<div style="display:flex;justify-content:flex-end;margin-bottom:14px"><button class="btn grey" id="rehunt">&#8635; Re-hunt all parts</button></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:24px">' +
@@ -366,11 +395,18 @@ document.addEventListener('DOMContentLoaded', async function () {
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Status</span><span id="schips">' + chip('s', 'all', sfilter, 'All', sc.all) + chip('s', 'saving', sfilter, 'Savings', sc.saving) + chip('s', 'nocheaper', sfilter, 'OEM best', sc.nocheaper) + chip('s', 'notfound', sfilter, 'No match', sc.notfound) + '</span></div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Location</span><span id="cchips">' + chip('c', 'all', cfilter, 'All', cc.all) + CATS.filter((c) => cc[c]).map((c) => chip('c', c, cfilter, c, cc[c])).join('') + '</span></div>' +
       '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:20px"><span style="font-size:12.5px;color:#6b7076;margin-right:2px">Source</span><span id="kchips">' + chip('k', 'all', kfilter, 'All', kc.all) + chip('k', 'oem_new', kfilter, 'OEM New', kc.oem_new) + chip('k', 'oem_used', kfilter, 'OEM Used', kc.oem_used) + chip('k', 'aftermarket', kfilter, 'Aftermarket', kc.aftermarket) + chip('k', 'salvage', kfilter, 'Salvage', kc.salvage) + '</span><div style="flex:1"></div><span style="font-family:\'JetBrains Mono\',monospace;font-size:12px;color:#6b7076">Rate results to sharpen the next run &#8594;</span></div>' +
+      countryRowHtml +
       '<div id="rows" style="display:flex;flex-direction:column;gap:12px"></div>';
     const rh = $('rehunt'); if (rh) rh.addEventListener('click', runHunt);
     document.querySelectorAll('#schips .schip').forEach((el) => el.addEventListener('click', () => { sfilter = el.dataset.v; render(); }));
     document.querySelectorAll('#kchips .kchip').forEach((el) => el.addEventListener('click', () => { kfilter = el.dataset.v; render(); }));
     document.querySelectorAll('#cchips .cchip').forEach((el) => el.addEventListener('click', () => { cfilter = el.dataset.v; render(); }));
+    document.querySelectorAll('#ctrychips .ctrychip').forEach((el) => el.addEventListener('click', () => {
+      const v = el.dataset.v;
+      if (v === 'all') countryFilter = [];
+      else { const i = countryFilter.indexOf(v); if (i === -1) countryFilter.push(v); else countryFilter.splice(i, 1); }
+      render();
+    }));
     drawRows();
   }
 
@@ -382,7 +418,7 @@ document.addEventListener('DOMContentLoaded', async function () {
       '<div style="font-family:\'JetBrains Mono\',monospace;font-size:11.5px;color:#9aa0a6">' + money(est) + ' &#8594; <span style="color:#e9ebed">' + money(found) + '</span>' + (save > 0 ? ' <span style="color:#58c98a">&#8722;' + money(save) + '</span>' : '') + '</div></div>';
   }
   function drawRows() {
-    const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || NK(p.kind) === kfilter) && (cfilter === 'all' || catOf(p) === cfilter));
+    const shown = data.results.filter((p) => (sfilter === 'all' || p.status === sfilter) && (kfilter === 'all' || NK(p.kind) === kfilter) && (cfilter === 'all' || catOf(p) === cfilter) && partInCountries(p, countryFilter));
     const el = $('rows');
     if (!shown.length) { el.innerHTML = '<div class="banner">Nothing in this filter.</div>'; return; }
     const groups = {}; shown.forEach((p) => { const c = catOf(p); (groups[c] = groups[c] || []).push(p); });

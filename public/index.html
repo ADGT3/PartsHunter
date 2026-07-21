@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/app.css?v=8">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="/assets/app.js?v=9" defer></script>
+<script src="/assets/app.js?v=10" defer></script>
 </head>
 <body>
 <header class="ps-header">
@@ -48,11 +48,8 @@
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:11px">SOURCES</label>
       <div id="dSrc" style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:22px"></div>
       <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">COUNTRY</label>
-      <select id="fCountry" style="width:100%;padding:12px 14px;background:#0f1113;border:1px solid #2a2e34;border-radius:9px;color:#e9ebed;font-size:15px;margin-bottom:24px">
-        <option value="all">All countries</option><option value="au">Australia</option><option value="us">United States</option>
-        <option value="gb">United Kingdom</option><option value="ca">Canada</option><option value="nz">New Zealand</option>
-        <option value="de">Germany</option><option value="jp">Japan</option><option value="ae">United Arab Emirates</option>
-      </select>
+      <div id="fCountry" style="margin-bottom:6px"></div>
+      <div style="font-size:12.5px;color:#6b7076;margin-bottom:24px">Pick one or more countries to hunt only sellers on those countries' sites. Leave empty for all countries.</div>
       <div style="display:flex;align-items:flex-start;gap:10px;padding:13px 15px;background:rgba(255,90,44,.08);border:1px solid rgba(255,90,44,.22);border-radius:10px;margin-bottom:26px">
         <span style="color:#ff6a3d;font-size:15px;line-height:1.4">◆</span>
         <span style="font-size:13px;color:#c8cccf;line-height:1.5">On save, the sniper drafts your search queries &amp; matching rules. You can edit everything before running.</span>
@@ -78,6 +75,9 @@
         <option value="NZD">NZD — New Zealand dollar</option>
       </select>
       <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Your estimate is treated as AUD unless you pick another currency here — everything is converted to AUD for the comparison.</div>
+      <label style="display:block;font-family:Archivo,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:9px">COUNTRY</label>
+      <div id="lCountry" style="margin-bottom:6px"></div>
+      <div style="font-size:12.5px;color:#6b7076;margin-bottom:20px">Pick one or more countries to hunt only sellers on those countries' sites. Leave empty for all countries.</div>
       <div id="dropZone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:48px 20px;border:1.5px dashed #2f343a;border-radius:14px;cursor:pointer;color:#8b9096">
         <div style="width:52px;height:52px;border-radius:50%;border:1.5px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:24px">⭱</div>
         <div style="font-size:15px;font-weight:600;color:#e9ebed">Drop an estimate or parts list here</div>
@@ -121,6 +121,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const money = (n) => '$' + Math.round(Number(n || 0)).toLocaleString('en-AU');
   const dsrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
   const lsrc = { oem_new: false, oem_used: false, aftermarket: false, salvage: false };
+  const dcountry = {}, lcountry = {};
 
   function showNew(v) { newSec.style.display = v ? 'block' : 'none'; projSec.style.display = v ? 'none' : 'block'; if (v) $('pname').focus(); window.scrollTo(0, 0); }
   $('newBtn').addEventListener('click', () => showNew(true));
@@ -148,6 +149,10 @@ document.addEventListener('DOMContentLoaded', function () {
     $(container).querySelectorAll('.chp').forEach((el) => el.addEventListener('click', () => { state[el.dataset.k] = !state[el.dataset.k]; chips(container, state, arr); }));
   }
   chips('dSrc', dsrc, LSRC); chips('lSrc', lsrc, LSRC);
+  const dPick = PH.countryPicker('fCountry', dcountry);
+  const lPick = PH.countryPicker('lCountry', lcountry);
+  const dCountries = () => dPick ? dPick.selected() : [];
+  const lCountries = () => lPick ? lPick.selected() : [];
 
   function refreshCreate() { const can = $('pname').value.trim() && $('pgoal').value.trim(); const b = $('createBtn'); b.style.background = can ? '#ff5a2c' : '#26292e'; b.style.color = can ? '#0d0e10' : '#6b7076'; b.dataset.can = can ? '1' : ''; }
   $('pname').addEventListener('input', refreshCreate);
@@ -155,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function () {
   $('createBtn').addEventListener('click', async () => {
     if (!$('createBtn').dataset.can) return;
     const name = $('pname').value.trim(), goal = $('pgoal').value.trim();
-    const filters = { oem_new: dsrc.oem_new, oem_used: dsrc.oem_used, aftermarket: dsrc.aftermarket, salvage: dsrc.salvage, country: $('fCountry').value };
+    const filters = { oem_new: dsrc.oem_new, oem_used: dsrc.oem_used, aftermarket: dsrc.aftermarket, salvage: dsrc.salvage, countries: dCountries() };
     $('createMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Drafting your search…</div>';
     try { const { project } = await PH.api('/api/projects', { method: 'POST', body: { name, goal, filters } }); location.href = 'draft.html?id=' + encodeURIComponent(project.id) + '&new=1'; }
     catch (e) { $('createMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
@@ -245,7 +250,7 @@ document.addEventListener('DOMContentLoaded', function () {
   async function hunt() {
     const btn = $('huntBtn'); btn.style.pointerEvents = 'none'; btn.innerHTML = '<span class="spinner"></span> Creating hunt…';
     try {
-      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: $('lCur').value, sources: { oem_new: lsrc.oem_new, oem_used: lsrc.oem_used, aftermarket: lsrc.aftermarket, salvage: lsrc.salvage }, lines: parsed.lines } });
+      const { project } = await PH.api('/api/list-create', { method: 'POST', body: { name: parsed.name || 'Parts list', currency: $('lCur').value, sources: { oem_new: lsrc.oem_new, oem_used: lsrc.oem_used, aftermarket: lsrc.aftermarket, salvage: lsrc.salvage }, countries: lCountries(), lines: parsed.lines } });
       location.href = 'list.html?id=' + encodeURIComponent(project.id) + '&run=1';
     } catch (e) { $('listMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; btn.style.pointerEvents = 'auto'; btn.textContent = 'Hunt all ' + parsed.lines.length + ' parts →'; }
   }
