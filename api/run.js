@@ -1,7 +1,7 @@
 import { sql, ensureSchema, readBody, uid, parsePriceNum } from './_db.js';
 import { requireAuth } from './_auth.js';
-import { runSearch } from './_anthropic.js';
-import { runGrokSearch } from './_grok.js';
+import { runSearch, normalizeListing } from './_anthropic.js';
+import { runGrokSearch, grokEnabled } from './_grok.js';
 import { runSalvageSearch } from './_salvage.js';
 import { normCountries, countryConstraint } from './_geo.js';
 
@@ -47,11 +47,12 @@ function mergeAndDeduplicate(existing = [], claude = [], grok = []) {
   const byTitle = new Map();
 
   const add = (l, source) => {
+    l = normalizeListing(l) || l;
     const urlKey = normalizeUrl(l.url);
-    if (!urlKey) return;
     const titleKey = normTitle(l.title);
+    if (!urlKey && !titleKey) return;
 
-    if (byUrl.has(urlKey)) {
+    if (urlKey && byUrl.has(urlKey)) {
       const ex = byUrl.get(urlKey);
       if (!ex.image && l.image) { ex.image = l.image; if (ex.source !== source) ex.source = 'hybrid'; }
       return;
@@ -59,10 +60,12 @@ function mergeAndDeduplicate(existing = [], claude = [], grok = []) {
     if (titleKey && byTitle.has(titleKey)) {
       const ex = byTitle.get(titleKey);
       if (!ex.image && l.image) ex.image = l.image;
+      if (!ex.url && l.url) ex.url = l.url;
       return;
     }
     const item = { ...l, source };
-    byUrl.set(urlKey, item);
+    if (urlKey) byUrl.set(urlKey, item);
+    else byUrl.set('t:' + titleKey, item);
     if (titleKey) byTitle.set(titleKey, item);
   };
 
@@ -78,13 +81,31 @@ function dropSold(listings) {
 }
 
 const JUNK_URL_RE = /(reddit\.com|youtube\.com|youtu\.be|wikipedia\.org|facebook\.com|twitter\.com|x\.com|instagram\.com|911uk\.com|\/threads?\/|showthread|viewtopic|\/wiki\/)/i;
-// Generic search / category / listing-index pages masquerading as a single listing.
-// (Specific lot/product pages are kept: /lot/123, /VehicleDetail/123, /auction/lots/123, /used/details/..., /products/...)
-const SEARCH_URL_RE = /(\/vehiclelisting\/|lotsearchresults|vehicle-search-model|\/damaged-vehicles\/search|\/used\/search\/|carfast\.express\/auction\/(brand|body_type|vehicle_type|fuel|retail_price|generation)-|\/collections\/|[?&](q|query|keyword|search|free)=|\/search(?:\/|\?|$))/i;
+
+function isProductLike(url) {
+  const u = (url || '').toLowerCase();
+  return /\/lot\/\d+|\/used\/details\/|\/itm\/|\/p\/\d|\/product[s]?\//.test(u);
+}
+
+// Index/search pages only — lot/product detail URLs are kept even if the path
+// contains "search" as a parent section.
+function isIndexUrl(url) {
+  const u = (url || '').toLowerCase();
+  if (!u) return false;
+  if (isProductLike(u)) return false;
+  if (/lotsearchresults|\/vehiclelisting\/|vehicle-search-model|\/damaged-vehicles\/search/.test(u)) return true;
+  if (/\/used\/search\//.test(u)) return true;
+  if (/carfast\.express\/auction\/(brand|body_type|vehicle_type|fuel|retail_price|generation)-/.test(u)) return true;
+  if (/\/collections\//.test(u)) return true;
+  if (/\/search(?:\/|\?|$)/.test(u)) return true;
+  return false;
+}
+
 function dropJunk(listings) {
   return listings.filter(l => {
-    if (JUNK_URL_RE.test(l.url || '')) return false;
-    if (SEARCH_URL_RE.test(l.url || '')) return false;
+    const url = l.url || '';
+    if (url && JUNK_URL_RE.test(url)) return false;
+    if (url && isIndexUrl(url) && l.source !== 'salvage') return false;
     if (/reported|at time of|forum/i.test(l.price || '')) return false;
     return true;
   });
@@ -177,11 +198,13 @@ export default async function handler(req, res) {
       return [];
     });
 
-    const grokPromise = runGrokSearch(searchProject, fb).catch(e => {
-      grokErr = (e && e.message) ? e.message : String(e);
-      console.error('Grok failed:', grokErr);
-      return [];
-    });
+    const grokPromise = grokEnabled()
+      ? runGrokSearch(searchProject, fb).catch(e => {
+          grokErr = (e && e.message) ? e.message : String(e);
+          console.error('Grok failed:', grokErr);
+          return [];
+        })
+      : Promise.resolve([]);
 
     const salvagePromise = runSalvageSearch(searchProject).catch(e => {
       salvageErr = (e && e.message) ? e.message : String(e);
@@ -195,22 +218,50 @@ export default async function handler(req, res) {
     const existing = existingRows.map(r => ({ ...r, badges: Array.isArray(r.badges) ? r.badges : [] }));
     const downvoted = new Set((fb || []).filter(f => f.vote < 0).map(f => normalizeUrl(f.listing_url)));
 
-    let listings = dropJunk(dropSold(mergeAndDeduplicate([...salvageListings, ...existing], claudeListings, grokListings)))
-      .filter(l => !downvoted.has(normalizeUrl(l.url)));
+    const merged = mergeAndDeduplicate([...salvageListings, ...existing], claudeListings, grokListings);
+    const afterSold = dropSold(merged);
+    const afterJunk = dropJunk(afterSold);
+    let listings = afterJunk.filter(l => !l.url || !downvoted.has(normalizeUrl(l.url)));
 
     listings = snapSections(listings, (project.config && project.config.categories) || []);
 
-    console.log(`=== RUN STATS === Claude: ${claudeListings.length} | Grok: ${grokListings.length} | Salvage: ${salvageListings.length} | Final: ${listings.length}`);
+    const stats = {
+      claude: claudeListings.length,
+      grok: grokEnabled() ? grokListings.length : 'skipped',
+      salvage: salvageListings.length,
+      existing: existing.length,
+      afterMerge: merged.length,
+      droppedSold: merged.length - afterSold.length,
+      droppedJunk: afterSold.length - afterJunk.length,
+      droppedDownvote: afterJunk.length - listings.length,
+      final: listings.length,
+      claudeErr,
+      grokErr,
+      salvageErr
+    };
+    console.log('=== RUN STATS ===', JSON.stringify(stats));
 
     if (listings.length === 0) {
       const detail = 'Claude: ' + (claudeErr ? ('ERROR — ' + claudeErr) : (claudeListings.length + ' returned')) +
-                     ' | Grok: ' + (grokErr ? ('ERROR — ' + grokErr) : (grokListings.length + ' returned')) +
-                     ' | Salvage: ' + (salvageErr ? ('ERROR — ' + salvageErr) : (salvageListings.length + ' returned'));
-      return res.status(502).json({ error: 'No results. ' + detail });
+                     ' | Grok: ' + (grokEnabled() ? (grokErr ? ('ERROR — ' + grokErr) : (grokListings.length + ' returned')) : 'skipped') +
+                     ' | Salvage: ' + (salvageErr ? ('ERROR — ' + salvageErr) : (salvageListings.length + ' returned')) +
+                     ' | filters dropped sold=' + stats.droppedSold + ' junk=' + stats.droppedJunk + ' down=' + stats.droppedDownvote;
+      if (existing.length) {
+        console.warn('Hunt empty; keeping last-good listings:', existing.length, detail);
+        return res.status(200).json({
+          runId: null,
+          count: existing.length,
+          listings: existing,
+          stale: true,
+          warning: 'Hunt returned no new listings. Showing last good results. ' + detail,
+          stats
+        });
+      }
+      return res.status(502).json({ error: 'No results. ' + detail, stats });
     }
 
     await Promise.allSettled(
-      listings.slice(0, 40).map(async (l) => {
+      listings.slice(0, 20).map(async (l) => {
         if (!l.image && l.url) {
           l.image = await ogImage(l.url);
         }
@@ -258,7 +309,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       runId,
       count: listings.length,
-      listings: responseListings
+      listings: responseListings,
+      stats
     });
 
   } catch (e) {

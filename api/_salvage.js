@@ -32,6 +32,9 @@ const PROXY = process.env.BROWSERLESS_PROXY || ''; // '' disables unblock sites
 const RENDER_WAIT = Number(process.env.SALVAGE_BROWSER_WAIT || 5000);
 const BUDGET_MS = Number(process.env.SALVAGE_BUDGET_MS || 100000);
 const FETCH_TIMEOUT = 42000;
+// At most one Claude extract per salvage run (parsers first). Keeps token spend down.
+const MAX_CLAUDE_EXTRACTS = Number(process.env.SALVAGE_CLAUDE_EXTRACTS || 1);
+let claudeExtractsLeft = MAX_CLAUDE_EXTRACTS;
 
 const lc = (s) => (s || '').toLowerCase().trim();
 const slug = (s) => lc(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -85,13 +88,13 @@ function isPoor(text) {
   return false;
 }
 
-async function normalFetch(url) {
+async function normalFetchHtml(url) {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), 15000);
   try {
     const r = await fetch(url, { signal: c.signal, headers: { 'user-agent': 'Mozilla/5.0 (compatible; PartsSniperBot/1.0)' } });
     if (!r.ok) return '';
-    return stripHtml(await r.text());
+    return await r.text();
   } catch (e) {
     return '';
   } finally {
@@ -99,8 +102,12 @@ async function normalFetch(url) {
   }
 }
 
+async function normalFetch(url) {
+  return stripHtml(await normalFetchHtml(url));
+}
+
 // Browserless /content — renders JS, no proxy. For sites that don't block datacenter IPs.
-async function renderFetch(url, retry = true) {
+async function renderFetchHtml(url, retry = true) {
   const key = process.env.BROWSERLESS_API_KEY;
   if (!key) return '';
   const c = new AbortController();
@@ -117,9 +124,9 @@ async function renderFetch(url, retry = true) {
       }),
       signal: c.signal
     });
-    if (r.status === 429 && retry) { await sleep(3000); return renderFetch(url, false); }
+    if (r.status === 429 && retry) { await sleep(3000); return renderFetchHtml(url, false); }
     if (!r.ok) return '';
-    return stripHtml(await r.text());
+    return await r.text();
   } catch (e) {
     return '';
   } finally {
@@ -127,11 +134,15 @@ async function renderFetch(url, retry = true) {
   }
 }
 
+async function renderFetch(url, retry = true) {
+  return stripHtml(await renderFetchHtml(url, retry));
+}
+
 // Browserless /unblock + residential proxy — bypasses Cloudflare/bot detection for
 // sites that block datacenter IPs (Carfast, Copart). Costs proxy units.
-async function unblockFetch(url, proxyCountry, retry = true) {
+async function unblockFetchHtml(url, proxyCountry, retry = true) {
   const key = process.env.BROWSERLESS_API_KEY;
-  if (!key || !PROXY) return ''; // disabled until BROWSERLESS_PROXY is set
+  if (!key || !PROXY) return '';
   const params = new URLSearchParams({ token: key, proxy: PROXY });
   if (proxyCountry) params.set('proxyCountry', proxyCountry);
   const c = new AbortController();
@@ -152,10 +163,10 @@ async function unblockFetch(url, proxyCountry, retry = true) {
       }),
       signal: c.signal
     });
-    if (r.status === 429 && retry) { await sleep(3000); return unblockFetch(url, proxyCountry, false); }
+    if (r.status === 429 && retry) { await sleep(3000); return unblockFetchHtml(url, proxyCountry, false); }
     if (!r.ok) return '';
     const data = await r.json();
-    return stripHtml(data && data.content ? data.content : '');
+    return (data && data.content) ? String(data.content) : '';
   } catch (e) {
     return '';
   } finally {
@@ -163,25 +174,80 @@ async function unblockFetch(url, proxyCountry, retry = true) {
   }
 }
 
-async function getText(site, v) {
+function absUrl(href, base) {
+  if (!href) return '';
+  href = href.replace(/&amp;/g, '&').trim();
+  if (!href || href.startsWith('#') || href.toLowerCase().startsWith('javascript:')) return '';
+  try { return new URL(href, base).href; } catch (e) { return ''; }
+}
+
+function parseLotsFromHtml(html, siteName, pageUrl) {
+  if (!html) return [];
+  const lots = [];
+  const seen = new Set();
+  const push = (url, title) => {
+    url = absUrl(url, pageUrl);
+    if (!url || seen.has(url.toLowerCase())) return;
+    if (!/^https?:\/\//i.test(url)) return;
+    seen.add(url.toLowerCase());
+    lots.push({
+      section: 'Salvage & Donor Vehicles',
+      title: (title || siteName + ' lot').replace(/\s+/g, ' ').trim().slice(0, 180),
+      description: '',
+      price: '',
+      currency: '',
+      condition: '',
+      seller: siteName,
+      url,
+      image: '',
+      badges: ['Salvage', siteName]
+    });
+  };
+
+  const hrefRe = /href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = hrefRe.exec(html))) {
+    const href = m[1];
+    const inner = stripHtml(m[2] || '');
+    const h = href.toLowerCase();
+    if (siteName === 'Copart' && /\/lot\/\d+/.test(h)) push(href, inner);
+    else if (siteName === 'Pickles' && /\/used\/details\//.test(h)) push(href, inner);
+    else if (siteName === 'Carfast' && /\/(lot|vehicle|auction\/lot)[-/]/.test(h) && !/auction\/brand-/.test(h)) push(href, inner);
+    else if (siteName === 'Manheim' && /\/(lot|vehicle|stock)\//.test(h)) push(href, inner);
+  }
+
+  if (siteName === 'Copart') {
+    const extra = html.match(/https?:\/\/[^"' \s]*\/lot\/\d+[^"' \s]*/gi) || [];
+    extra.forEach((u) => push(u, 'Copart lot'));
+  }
+  return lots.slice(0, 25);
+}
+
+async function getPage(site, v) {
   const url = site.url(v);
+  const empty = { html: '', text: '', url };
   if (site.mode === 'plain') {
-    const n = await normalFetch(url);
-    if (!isPoor(n)) return n;
-    return await renderFetch(url);
+    const html = await normalFetchHtml(url);
+    const text = stripHtml(html);
+    if (!isPoor(text)) return { html, text, url };
+    const html2 = await renderFetchHtml(url);
+    return { html: html2, text: stripHtml(html2), url };
   }
   if (site.mode === 'render') {
-    const b = await renderFetch(url);
-    if (!isPoor(b)) return b;
-    return await normalFetch(url);
+    const html = await renderFetchHtml(url);
+    const text = stripHtml(html);
+    if (!isPoor(text)) return { html, text, url };
+    const html2 = await normalFetchHtml(url);
+    return { html: html2, text: stripHtml(html2), url };
   }
   if (site.mode === 'unblock') {
-    if (!PROXY) return ''; // needs residential proxy; skip until enabled (no cost)
+    if (!PROXY) return empty;
     const pc = typeof site.proxyCountry === 'function' ? site.proxyCountry(v) : site.proxyCountry;
-    const u = await unblockFetch(url, pc);
-    return isPoor(u) ? '' : u;
+    const html = await unblockFetchHtml(url, pc);
+    const text = stripHtml(html);
+    return isPoor(text) ? empty : { html, text, url };
   }
-  return '';
+  return empty;
 }
 
 function parseArr(t) {
@@ -205,7 +271,7 @@ async function anthropic(system, user, maxTokens) {
   const r = await fetch(ANTHROPIC_API, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': VERSION },
-    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] })
+    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, thinking: { type: 'disabled' }, system, messages: [{ role: 'user', content: user }] })
   });
   if (!r.ok) return '';
   const data = await r.json();
@@ -213,7 +279,9 @@ async function anthropic(system, user, maxTokens) {
 }
 
 async function extractLots(text, siteName, v) {
+  if (claudeExtractsLeft <= 0) return [];
   if (isPoor(text)) return [];
+  claudeExtractsLeft--;
   const system = [
     'You extract vehicle lots from the rendered text of an auction / salvage search-results page.',
     'Return ONLY a JSON array, no prose, no markdown.',
@@ -276,8 +344,21 @@ function wantsSalvage(project) {
   return /salvage|wreck|write.?off|donor|damaged|crashed|parts? car/.test(hay);
 }
 
+async function lotsForSite(site, v) {
+  const page = await getPage(site, v);
+  const parsed = parseLotsFromHtml(page.html, site.name, page.url);
+  if (parsed.length) {
+    console.log('Salvage parser', site.name, parsed.length, 'lots (no Claude)');
+    return parsed;
+  }
+  const extracted = await extractLots(page.text, site.name, v);
+  if (extracted.length) console.log('Salvage Claude extract', site.name, extracted.length);
+  return extracted;
+}
+
 export async function runSalvageSearch(project) {
   const out = [];
+  claudeExtractsLeft = MAX_CLAUDE_EXTRACTS;
   const push = (lots, site) => {
     for (const l of lots) {
       out.push({
@@ -294,17 +375,15 @@ export async function runSalvageSearch(project) {
     const v = await deriveVehicle(project);
     if (!v.make) return;
 
-    // Plain (non-browser) sites in parallel.
     const plainSites = SITES.filter((s) => s.mode === 'plain');
     await Promise.all(plainSites.map(async (site) => {
-      try { push(await extractLots(await getText(site, v), site.name, v), site); }
+      try { push(await lotsForSite(site, v), site); }
       catch (e) { /* skip */ }
     }));
 
-    // Browserless-backed sites (unblock + render) ONE AT A TIME, most valuable first.
     const browserSites = SITES.filter((s) => s.mode !== 'plain');
     for (const site of browserSites) {
-      try { push(await extractLots(await getText(site, v), site.name, v), site); }
+      try { push(await lotsForSite(site, v), site); }
       catch (e) { /* skip */ }
     }
   })().catch(() => {});

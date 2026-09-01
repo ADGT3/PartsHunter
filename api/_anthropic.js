@@ -4,20 +4,21 @@ const VERSION = '2023-06-01';
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const SEARCH_MODEL = process.env.SEARCH_MODEL || 'claude-sonnet-5';
 const RUN_TIMEOUT_MS = Number(process.env.RUN_TIMEOUT_MS || 280000);
-const MAX_STEPS = Number(process.env.SEARCH_MAX_STEPS || 14);
+// Keep the agent short — each step is a billed Messages call.
+const MAX_STEPS = Number(process.env.SEARCH_MAX_STEPS || 8);
 const MAX_BROWSER_FETCHES = Number(process.env.MAX_BROWSER_FETCHES || 5);
-let browserBudget = MAX_BROWSER_FETCHES; // reset each run; caps slow headless renders
+let browserBudget = MAX_BROWSER_FETCHES;
 const PAGE_CHARS = Number(process.env.FETCH_PAGE_CHARS || 12000);
 
 const WEB_SEARCH_TOOL = {
   type: 'web_search_20250305',
   name: 'web_search',
-  max_uses: Number(process.env.SEARCH_MAX_USES || 10)
+  max_uses: Number(process.env.SEARCH_MAX_USES || 6)
 };
 
 const FETCH_TOOL = {
   name: 'fetch_page',
-  description: 'Fast normal fetch. Use this first for most sites.',
+  description: 'Fast normal fetch. Use this first for most sites. Only fetch a specific product or lot page, not a search-results index.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
@@ -27,13 +28,26 @@ const FETCH_TOOL = {
 
 const FETCH_BROWSER_TOOL = {
   name: 'fetch_page_browser',
-  description: 'Use only when normal fetch returns very little content or for known JS-heavy sites.',
+  description: 'Use only when normal fetch returns very little content or for known JS-heavy sites. Budget is small — prefer fetch_page.',
   input_schema: {
     type: 'object',
     properties: { url: { type: 'string' } },
     required: ['url']
   }
 };
+
+const LISTING_SCHEMA = `Each listing MUST be an object with these keys:
+- "section": string (exactly one CATEGORY name, copied verbatim)
+- "title": string
+- "description": string
+- "price": string (as shown, or "")
+- "currency": string (ISO code if known, else "")
+- "condition": string
+- "seller": string
+- "url": string (https product/lot DETAIL page — not a search/category page)
+- "image": string (direct image URL if seen, else "")
+- "badges": array of short strings
+Aliases (link/href, image_url) are not allowed — use "url" and "image".`;
 
 function isPoorContent(text) {
   if (!text || text.startsWith('FETCH ERROR') || text.startsWith('BROWSER')) return true;
@@ -137,11 +151,10 @@ async function fetchPageWithBrowser(url) {
   }
 }
 
-// Automatic fallback: normal first, then browser if poor
 async function smartFetch(url) {
   const normal = await fetchPageText(url);
   if (isPoorContent(normal)) {
-    if (browserBudget <= 0) return normal; // headless-render cap reached this run
+    if (browserBudget <= 0) return normal;
     browserBudget--;
     console.log('Poor content from normal fetch, trying browser for:', url);
     return await fetchPageWithBrowser(url);
@@ -150,6 +163,12 @@ async function smartFetch(url) {
 }
 
 const MAX_RETRIES = Number(process.env.ANTHROPIC_MAX_RETRIES || 5);
+let thinkingSupported = true;
+
+function withThinkingOff(body) {
+  if (!thinkingSupported) return body;
+  return { ...body, thinking: { type: 'disabled' } };
+}
 
 async function rawCall(body) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -159,6 +178,7 @@ async function rawCall(body) {
   try {
     for (let attempt = 0; ; attempt++) {
       let r;
+      const payload = withThinkingOff(body);
       try {
         r = await fetch(API, {
           method: 'POST',
@@ -167,7 +187,7 @@ async function rawCall(body) {
             'x-api-key': key,
             'anthropic-version': VERSION
           },
-          body: JSON.stringify(body),
+          body: JSON.stringify(payload),
           signal: controller.signal
         });
       } catch (e) {
@@ -177,7 +197,10 @@ async function rawCall(body) {
       if (r.ok) return await r.json();
 
       const errText = await r.text();
-      // 429 = rate limited, 529 = overloaded, 5xx = transient server errors — back off and retry.
+      if (r.status === 400 && thinkingSupported && /thinking/i.test(errText)) {
+        thinkingSupported = false;
+        continue;
+      }
       const retryable = r.status === 429 || r.status === 529 || (r.status >= 500 && r.status < 600);
       if (retryable && attempt < MAX_RETRIES) {
         const wait = Math.min(1500 * Math.pow(2, attempt), 20000);
@@ -196,9 +219,15 @@ function textOf(data) {
   return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
 }
 
+function blockTypes(data) {
+  return ((data && data.content) || []).map((b) => b.type).join(',') || 'none';
+}
+
 async function call(body) {
   return textOf(await rawCall(body));
 }
+
+const SERVER_TOOLS = new Set(['web_search', 'web_search_20250305']);
 
 async function agentLoop(body) {
   let messages = body.messages.slice();
@@ -208,6 +237,10 @@ async function agentLoop(body) {
     data = await rawCall({ ...body, messages });
     const stop = data.stop_reason;
 
+    if (stop === 'refusal') {
+      throw new Error('Claude refused the search (stop_reason=refusal).');
+    }
+
     if (stop === 'pause_turn') {
       messages = messages.concat([{ role: 'assistant', content: data.content }]);
       continue;
@@ -216,20 +249,22 @@ async function agentLoop(body) {
     if (stop === 'tool_use') {
       messages = messages.concat([{ role: 'assistant', content: data.content }]);
       const results = [];
+      let onlyServer = true;
 
       for (const b of data.content || []) {
-        if (b.type === 'tool_use') {
-          let out;
-          if (b.name === 'fetch_page' || b.name === 'fetch_page_browser') {
-            // Use smartFetch which does automatic fallback
-            out = await smartFetch(b.input?.url || '');
-          } else {
-            out = 'Unsupported tool: ' + b.name;
-          }
-          results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
+        if (b.type !== 'tool_use') continue;
+        if (SERVER_TOOLS.has(b.name)) continue;
+        onlyServer = false;
+        let out;
+        if (b.name === 'fetch_page' || b.name === 'fetch_page_browser') {
+          out = await smartFetch(b.input?.url || '');
+        } else {
+          out = 'Unsupported tool: ' + b.name + '. Output the JSON array of listings now.';
         }
+        results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
       }
 
+      if (onlyServer) continue;
       messages = messages.concat([{
         role: 'user',
         content: results.length ? results : 'Now output the final JSON array of listings.'
@@ -238,12 +273,12 @@ async function agentLoop(body) {
     }
 
     if (textOf(data)) return data;
-    messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now.' }]);
+    messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now. ' + LISTING_SCHEMA }]);
   }
 
   const finalMessages = messages.concat([{
     role: 'user',
-    content: 'Stop researching now. Output ONLY the final JSON array of listings. No prose.'
+    content: 'Stop researching now. Output ONLY the final JSON array of listings. No prose.\n' + LISTING_SCHEMA
   }]);
   return await rawCall({ ...body, messages: finalMessages, tool_choice: { type: 'none' } });
 }
@@ -256,11 +291,8 @@ function extractJson(text) {
   s = s.slice(start).replace(/[\x00-\x1F]+/g, ' ').trim();
 
   const candidates = [s];
-  // Slice to the last closing bracket.
   const end = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
   if (end > 0) candidates.push(s.slice(0, end + 1));
-  // Truncation repair: if it's an array cut off mid-object, keep up to the last
-  // COMPLETE object, drop any trailing comma, and re-close the array.
   if (s[0] === '[') {
     const lastObj = s.lastIndexOf('}');
     if (lastObj > 0) candidates.push(s.slice(0, lastObj + 1).replace(/,\s*$/, '') + ']');
@@ -269,6 +301,26 @@ function extractJson(text) {
     try { return JSON.parse(c); } catch (e) { /* try next */ }
   }
   throw new Error('Could not parse model JSON. Start: ' + s.slice(0, 200));
+}
+
+export function normalizeListing(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const url = String(raw.url || raw.link || raw.href || raw.listing_url || '').trim();
+  const image = String(raw.image || raw.image_url || raw.img || raw.thumbnail || '').trim();
+  const title = String(raw.title || raw.name || '').trim();
+  if (!title && !url) return null;
+  return {
+    section: raw.section || raw.category || 'Results',
+    title,
+    description: String(raw.description || raw.desc || '').trim(),
+    price: raw.price == null ? '' : String(raw.price),
+    currency: String(raw.currency || '').trim(),
+    condition: String(raw.condition || raw.damage || '').trim(),
+    seller: String(raw.seller || raw.source || raw.site || '').trim(),
+    url,
+    image,
+    badges: Array.isArray(raw.badges) ? raw.badges : []
+  };
 }
 
 export async function expandGoal(goal) {
@@ -294,7 +346,6 @@ export async function runSearch(project, feedback) {
   const good = (feedback || []).filter((f) => f.vote > 0).slice(0, 25);
   const bad = (feedback || []).filter((f) => f.vote < 0).slice(0, 25);
 
-  // If config is empty, expand on the fly
   let categories = cfg.categories || [];
   let queries = cfg.queries || [];
   let rules = cfg.rules || [];
@@ -313,12 +364,15 @@ export async function runSearch(project, feedback) {
   const system = `You are Parts Sniper — expert at finding real OEM and salvage parts for damaged cars.
 
 Tool rules:
-- Prefer normal fetch_page first.
+- Prefer web_search, then fetch_page on a SMALL number of the best DETAIL pages (not search indexes).
 - The system will automatically upgrade to browser when the page is JavaScript-heavy.
-- Focus hard on salvage/auction sources (Copart, IAAI, etc.) when relevant to the goal.
+- Do not exhaust the search budget: a few high-quality queries beat many vague ones.
+- Focus on salvage/auction sources (Copart, IAAI, Pickles, Manheim) when relevant.
 - Extract accurate price, condition, seller, and image for every listing.
-- Every listing's "section" MUST be EXACTLY one of the CATEGORIES provided below (copy the category text verbatim). Do not invent new section names; if a listing does not neatly fit, choose the closest category.
-- Output ONLY a JSON array of listings. Never fabricate.`;
+- Never fabricate a URL, price, or lot. If you cannot verify a listing, omit it.
+- After tools, output ONLY a JSON array.
+
+${LISTING_SCHEMA}`;
 
   const parts = [
     'PROJECT GOAL: ' + project.goal,
@@ -327,20 +381,25 @@ Tool rules:
     'RULES:\n- ' + rules.join('\n- '),
     good.length ? 'GOOD EXAMPLES (find similar):\n- ' + good.map(f => f.listing_url).join('\n- ') : '',
     bad.length ? 'AVOID similar to:\n- ' + bad.map(f => f.listing_url).join('\n- ') : '',
-    'Do deep research now. Prioritise real current listings and salvage vehicles when relevant. Return ONLY the JSON array.'
+    'Research now. Prefer real current detail-page listings. Return ONLY the JSON array.'
   ].filter(Boolean).join('\n\n');
 
   const data = await agentLoop({
     model: SEARCH_MODEL,
-    max_tokens: 16000,
+    max_tokens: 8000,
     system,
     messages: [{ role: 'user', content: parts }],
     tools: [WEB_SEARCH_TOOL, FETCH_TOOL, FETCH_BROWSER_TOOL]
   });
 
+  if (data && data.stop_reason === 'refusal') {
+    throw new Error('Claude refused the search.');
+  }
   const text = textOf(data);
-  if (!text) throw new Error('Search returned no text');
+  if (!text) {
+    throw new Error('Search returned no text (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + blockTypes(data) + ')');
+  }
   const arr = extractJson(text);
   if (!Array.isArray(arr)) throw new Error('Search did not return a JSON array.');
-  return arr;
+  return arr.map(normalizeListing).filter(Boolean);
 }
