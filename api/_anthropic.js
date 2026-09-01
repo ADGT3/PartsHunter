@@ -452,7 +452,9 @@ Tool rules:
 - Focus on salvage/auction and parts catalogues (Copart, IAAI, Pickles, eBay, OEM dealers) when relevant.
 - Extract price, condition, seller, and image when shown.
 - Never invent a URL. You MAY list a result using the exact URL + title from web_search even if you did not fetch the page.
-- Return EVERY distinct for-sale hit from the search results (aim 12–25). Empty array only if search returned nothing relevant.
+- Return EVERY distinct for-sale hit from the search results that matches the GOAL vehicle and RULES (aim 12–25). Empty array only if search returned nothing relevant.
+- Fitment: if the goal names a chassis/generation (e.g. 992), do NOT include listings that only fit another generation (e.g. 991-only). Shared 991/992 fitment is OK only when the listing itself says it fits the goal generation.
+- Kind: obey RULES on OEM vs aftermarket. If rules say OEM only, drop replica / aftermarket / non-genuine.
 - After tools, output ONLY a JSON array.
 
 ${LISTING_SCHEMA}`;

@@ -155,9 +155,59 @@ function filtersToRules(filters) {
   if (kinds.length) {
     out.push('CONSTRAINT (result type): ONLY include ' + kinds.join(', ') + '. Exclude anything that is none of these.');
   }
+  if ((filters.oem_new || filters.oem_used || filters.oem) && !filters.aftermarket) {
+    out.push('CONSTRAINT: OEM only. Exclude aftermarket, replica, reproduction, pattern, and non-genuine parts.');
+  }
   const geo = countryConstraint(normCountries(filters));
   if (geo) out.push(geo);
   return out;
+}
+
+const GEN_FAMILIES = [
+  ['992', '991', '997', '996', '993', '964'],
+  ['982', '981', '987', '986', '718'],
+  ['971', '970'],
+  ['9y0', '958', '955']
+];
+const AFTERMARKET_RE = /\bafter[\s-]?market\b|\breplica\b|\brepro(?:duction)?\b|\bnon-?genuine\b|\bpattern part\b|\bnot oem\b|\bnot genuine\b|\bimitation\b|\blook-?alike\b|\brep\.?\s*carbon\b/i;
+const OEM_RE = /\boem\b|\bgenuine\b|\boriginal equipment\b|\bporsche tequipment\b|\boe part\b/i;
+
+function listingBlob(l) {
+  return [l.title, l.description, l.url, l.seller, Array.isArray(l.badges) ? l.badges.join(' ') : ''].join(' ').toLowerCase();
+}
+
+export function projectSpec(project) {
+  const cfg = project.config || {};
+  const f = cfg.filters || {};
+  const hay = ((project.goal || '') + ' ' + (cfg.salvageQuery || '') + ' ' + (cfg.salvageModel || '') + ' ' + ((cfg.categories || []).join(' '))).toLowerCase();
+  const targetGens = [];
+  const forbidGens = [];
+  for (const fam of GEN_FAMILIES) {
+    const present = fam.filter((g) => new RegExp('\\b' + g + '\\b', 'i').test(hay));
+    if (present.length) {
+      present.forEach((g) => { if (targetGens.indexOf(g) === -1) targetGens.push(g); });
+      fam.forEach((g) => { if (present.indexOf(g) === -1) forbidGens.push(g); });
+    }
+  }
+  const oemWanted = !!(f.oem_new || f.oem_used || f.oem);
+  const aftermarketOk = !!f.aftermarket;
+  const oemOnly = oemWanted && !aftermarketOk;
+  return { targetGens, forbidGens, oemOnly, aftermarketOk };
+}
+
+function dropOffSpec(listings, spec) {
+  if (!spec) return listings;
+  return listings.filter((l) => {
+    const hay = listingBlob(l);
+    if (spec.forbidGens.length) {
+      const hasTarget = spec.targetGens.some((g) => new RegExp('\\b' + g + '\\b', 'i').test(hay));
+      const hasForbid = spec.forbidGens.some((g) => new RegExp('\\b' + g + '\\b', 'i').test(hay));
+      // Drop 991-only (etc.) listings. Keep if they also name the target gen (shared fitment).
+      if (hasForbid && !hasTarget) return false;
+    }
+    if (spec.oemOnly && AFTERMARKET_RE.test(hay) && !OEM_RE.test(hay)) return false;
+    return true;
+  });
 }
 
 export default async function handler(req, res) {
@@ -189,7 +239,11 @@ export default async function handler(req, res) {
     let salvageErr = null;
 
     // Apply the project's filter checkboxes/country as extra search constraints.
+    const specForPrompt = projectSpec(project);
     const filterRules = filtersToRules(project.config && project.config.filters);
+    if (specForPrompt.targetGens.length) {
+      filterRules.push('CONSTRAINT (fitment): target generation(s) ' + specForPrompt.targetGens.join(', ') + '. Exclude listings that only fit ' + specForPrompt.forbidGens.join(', ') + ' unless they also list a target generation.');
+    }
     const searchProject = filterRules.length
       ? { ...project, config: { ...(project.config || {}), rules: [ ...((project.config && project.config.rules) || []), ...filterRules ] } }
       : project;
@@ -221,9 +275,11 @@ export default async function handler(req, res) {
     const downvoted = new Set((fb || []).filter(f => f.vote < 0).map(f => normalizeUrl(f.listing_url)));
 
     const merged = mergeAndDeduplicate([...salvageListings, ...existing], claudeListings, grokListings);
+    const spec = projectSpec(project);
     const afterSold = dropSold(merged);
     const afterJunk = dropJunk(afterSold);
-    let listings = afterJunk.filter(l => !l.url || !downvoted.has(normalizeUrl(l.url)));
+    const afterSpec = dropOffSpec(afterJunk, spec);
+    let listings = afterSpec.filter(l => !l.url || !downvoted.has(normalizeUrl(l.url)));
 
     listings = snapSections(listings, (project.config && project.config.categories) || []);
 
@@ -235,7 +291,10 @@ export default async function handler(req, res) {
       afterMerge: merged.length,
       droppedSold: merged.length - afterSold.length,
       droppedJunk: afterSold.length - afterJunk.length,
-      droppedDownvote: afterJunk.length - listings.length,
+      droppedOffSpec: afterJunk.length - afterSpec.length,
+      droppedDownvote: afterSpec.length - listings.length,
+      targetGens: spec.targetGens,
+      oemOnly: spec.oemOnly,
       final: listings.length,
       claudeErr,
       grokErr,
@@ -247,7 +306,7 @@ export default async function handler(req, res) {
       const detail = 'Claude: ' + (claudeErr ? ('ERROR — ' + claudeErr) : (claudeListings.length + ' returned')) +
                      ' | Grok: ' + (grokEnabled() ? (grokErr ? ('ERROR — ' + grokErr) : (grokListings.length + ' returned')) : 'skipped') +
                      ' | Salvage: ' + (salvageErr ? ('ERROR — ' + salvageErr) : (salvageListings.length + ' returned')) +
-                     ' | filters dropped sold=' + stats.droppedSold + ' junk=' + stats.droppedJunk + ' down=' + stats.droppedDownvote;
+                     ' | filters dropped sold=' + stats.droppedSold + ' junk=' + stats.droppedJunk + ' off-spec=' + stats.droppedOffSpec + ' down=' + stats.droppedDownvote;
       if (existing.length) {
         console.warn('Hunt empty; keeping last-good listings:', existing.length, detail);
         return res.status(200).json({
