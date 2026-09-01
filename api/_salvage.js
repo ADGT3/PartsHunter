@@ -371,9 +371,15 @@ export async function runSalvageSearch(project) {
   };
 
   const work = (async () => {
-    if (!wantsSalvage(project)) return;
+    if (!wantsSalvage(project)) {
+      console.log('Salvage skipped: enable the Salvage filter or mention salvage/donor/wreck in the goal');
+      return;
+    }
     const v = await deriveVehicle(project);
-    if (!v.make) return;
+    if (!v.make) {
+      console.log('Salvage skipped: could not derive vehicle make from goal/config');
+      return;
+    }
 
     const plainSites = SITES.filter((s) => s.mode === 'plain');
     await Promise.all(plainSites.map(async (site) => {

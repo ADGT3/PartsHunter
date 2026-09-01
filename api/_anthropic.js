@@ -229,12 +229,82 @@ async function call(body) {
 
 const SERVER_TOOLS = new Set(['web_search', 'web_search_20250305']);
 
+function collectSearchHits(content, into) {
+  if (!content) return into;
+  const blocks = Array.isArray(content) ? content : [content];
+  for (const b of blocks) {
+    if (!b || typeof b !== 'object') continue;
+    if (b.type === 'web_search_tool_result' && Array.isArray(b.content)) {
+      for (const r of b.content) {
+        const url = r && (r.url || r.link);
+        if (!url || !/^https?:\/\//i.test(url)) continue;
+        into.push({
+          title: String(r.title || r.page_title || '').trim(),
+          url: String(url).trim(),
+          description: String(r.snippet || r.description || '').trim()
+        });
+      }
+    }
+    if (b.type === 'web_search_result' && b.url) {
+      into.push({ title: String(b.title || '').trim(), url: String(b.url).trim(), description: String(b.snippet || '').trim() });
+    }
+    if (Array.isArray(b.citations)) {
+      for (const c of b.citations) {
+        const url = c && (c.url || c.source);
+        if (url && /^https?:\/\//i.test(url)) {
+          into.push({ title: String(c.title || '').trim(), url: String(url).trim(), description: '' });
+        }
+      }
+    }
+    if (b.type === 'text' && typeof b.text === 'string') {
+      const urls = b.text.match(/https?:\/\/[^\s)"'<>]+/g) || [];
+      urls.forEach((u) => into.push({ title: '', url: u.replace(/[.,;]+$/, ''), description: '' }));
+    }
+    if (Array.isArray(b.content)) collectSearchHits(b.content, into);
+  }
+  return into;
+}
+
+function hitsToListings(hits, categories) {
+  const seen = new Set();
+  const cat = (categories && categories[0]) || 'Results';
+  const out = [];
+  for (const h of hits) {
+    const url = (h.url || '').split('#')[0];
+    if (!url) continue;
+    const key = url.toLowerCase().replace(/\/$/, '');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return ''; } })();
+    out.push({
+      section: cat,
+      title: h.title || host || url,
+      description: h.description || '',
+      price: '',
+      currency: '',
+      condition: '',
+      seller: host,
+      url,
+      image: '',
+      badges: ['web']
+    });
+  }
+  return out;
+}
+
 async function agentLoop(body) {
   let messages = body.messages.slice();
   let data;
+  const hits = [];
+  let stopTools = false;
 
   for (let i = 0; i < MAX_STEPS; i++) {
-    data = await rawCall({ ...body, messages });
+    data = await rawCall({
+      ...body,
+      messages,
+      ...(stopTools ? { tool_choice: { type: 'none' } } : {})
+    });
+    collectSearchHits(data && data.content, hits);
     const stop = data.stop_reason;
 
     if (stop === 'refusal') {
@@ -264,7 +334,16 @@ async function agentLoop(body) {
         results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
       }
 
-      if (onlyServer) continue;
+      // Server-side web_search results should already be in this response.
+      // Do not spin another tool-use turn — ask for JSON from hits we have.
+      if (onlyServer) {
+        stopTools = true;
+        messages = messages.concat([{
+          role: 'user',
+          content: 'Using the search results already returned, output ONLY the JSON array of listings now. Include every for-sale result with its real URL. Empty array only if nothing for sale was found.\n' + LISTING_SCHEMA
+        }]);
+        continue;
+      }
       messages = messages.concat([{
         role: 'user',
         content: results.length ? results : 'Now output the final JSON array of listings.'
@@ -272,15 +351,17 @@ async function agentLoop(body) {
       continue;
     }
 
-    if (textOf(data)) return data;
-    messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now. ' + LISTING_SCHEMA }]);
+    if (textOf(data)) return { data, hits };
+    messages = messages.concat([{ role: 'user', content: 'Output ONLY the JSON array of results now. Include real search-result URLs. ' + LISTING_SCHEMA }]);
   }
 
   const finalMessages = messages.concat([{
     role: 'user',
     content: 'Stop researching now. Output ONLY the final JSON array of listings. No prose.\n' + LISTING_SCHEMA
   }]);
-  return await rawCall({ ...body, messages: finalMessages, tool_choice: { type: 'none' } });
+  const last = await rawCall({ ...body, messages: finalMessages, tool_choice: { type: 'none' } });
+  collectSearchHits(last && last.content, last && last.content ? hits : hits);
+  return { data: last, hits };
 }
 
 function extractJson(text) {
@@ -368,8 +449,9 @@ Tool rules:
 - The system will automatically upgrade to browser when the page is JavaScript-heavy.
 - Do not exhaust the search budget: a few high-quality queries beat many vague ones.
 - Focus on salvage/auction sources (Copart, IAAI, Pickles, Manheim) when relevant.
-- Extract accurate price, condition, seller, and image for every listing.
-- Never fabricate a URL, price, or lot. If you cannot verify a listing, omit it.
+- Extract accurate price, condition, seller, and image when the page shows them.
+- Never invent a URL. You MAY list a result using the exact URL + title from web_search even if you did not fetch the page.
+- Prefer 8–20 real hits over an empty array. Empty array only if search returned nothing relevant.
 - After tools, output ONLY a JSON array.
 
 ${LISTING_SCHEMA}`;
@@ -384,22 +466,40 @@ ${LISTING_SCHEMA}`;
     'Research now. Prefer real current detail-page listings. Return ONLY the JSON array.'
   ].filter(Boolean).join('\n\n');
 
-  const data = await agentLoop({
+  const loop = await agentLoop({
     model: SEARCH_MODEL,
     max_tokens: 8000,
     system,
     messages: [{ role: 'user', content: parts }],
     tools: [WEB_SEARCH_TOOL, FETCH_TOOL, FETCH_BROWSER_TOOL]
   });
+  const data = loop.data;
+  const hits = loop.hits || [];
 
   if (data && data.stop_reason === 'refusal') {
     throw new Error('Claude refused the search.');
   }
+  let parsed = [];
   const text = textOf(data);
-  if (!text) {
-    throw new Error('Search returned no text (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + blockTypes(data) + ')');
+  if (text) {
+    try {
+      const arr = extractJson(text);
+      if (Array.isArray(arr)) parsed = arr.map(normalizeListing).filter(Boolean);
+    } catch (e) {
+      console.warn('Claude JSON parse failed, will use harvested search hits:', e.message);
+    }
+  } else {
+    console.warn('Search returned no text (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + blockTypes(data) + ', hits=' + hits.length + ')');
   }
-  const arr = extractJson(text);
-  if (!Array.isArray(arr)) throw new Error('Search did not return a JSON array.');
-  return arr.map(normalizeListing).filter(Boolean);
+
+  if (parsed.length) return parsed;
+
+  const harvested = hitsToListings(hits, categories);
+  console.log('Claude harvested search hits:', harvested.length, 'parsed listings:', parsed.length);
+  if (harvested.length) return harvested;
+
+  if (!text) {
+    throw new Error('Search returned no text and no search hits (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + blockTypes(data) + ')');
+  }
+  return [];
 }
