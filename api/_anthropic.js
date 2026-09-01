@@ -256,10 +256,7 @@ function collectSearchHits(content, into) {
         }
       }
     }
-    if (b.type === 'text' && typeof b.text === 'string') {
-      const urls = b.text.match(/https?:\/\/[^\s)"'<>]+/g) || [];
-      urls.forEach((u) => into.push({ title: '', url: u.replace(/[.,;]+$/, ''), description: '' }));
-    }
+    // Do not scrape every URL out of model prose — that pulled SharePoint, boutiques, GOV.UK, etc.
     if (Array.isArray(b.content)) collectSearchHits(b.content, into);
   }
   return into;
@@ -455,6 +452,7 @@ Tool rules:
 - Return EVERY distinct for-sale hit from the search results that matches the GOAL vehicle and RULES (aim 12–25). Empty array only if search returned nothing relevant.
 - Fitment: if the goal names a chassis/generation (e.g. 992), do NOT include listings that only fit another generation (e.g. 991-only). Shared 991/992 fitment is OK only when the listing itself says it fits the goal generation.
 - Kind: obey RULES on OEM vs aftermarket. If rules say OEM only, drop replica / aftermarket / non-genuine.
+- Never include toys, diecast, scale models (1:18, 1:43, Hot Wheels, Lego, RC), posters, or merch. Only real full-size vehicle parts or salvage cars.
 - After tools, output ONLY a JSON array.
 
 ${LISTING_SCHEMA}`;
@@ -516,4 +514,59 @@ ${LISTING_SCHEMA}`;
     throw new Error('Search returned no text and no search hits (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + blockTypes(data) + ')');
   }
   return [];
+}
+
+const JUDGE_MAX = Number(process.env.JUDGE_MAX_ITEMS || 40);
+
+export async function judgeListings(project, listings) {
+  if (!listings || !listings.length) return [];
+  const cfg = project.config || {};
+  const f = cfg.filters || {};
+  const slice = listings.slice(0, JUDGE_MAX);
+  const catalog = slice.map((l, i) => ({
+    i,
+    title: (l.title || '').slice(0, 160),
+    url: l.url || '',
+    seller: (l.seller || '').slice(0, 80),
+    price: l.price || '',
+    section: l.section || ''
+  }));
+  const kinds = [];
+  if (f.oem_new || f.oem) kinds.push('new genuine OEM parts');
+  if (f.oem_used || f.oem) kinds.push('used genuine OEM parts');
+  if (f.aftermarket) kinds.push('aftermarket parts');
+  if (f.salvage) kinds.push('salvage / donor vehicles');
+  const system = `You are a strict parts-listing judge. Decide which candidates are REAL matches for the hunt.
+KEEP only if ALL are true:
+- It is a full-size car part for sale, or a whole salvage/donor vehicle if salvage is allowed.
+- It matches the GOAL vehicle (same model/generation). Shared-fitment is OK only if the listing itself says it fits that vehicle.
+- It matches the allowed kinds. If OEM-only, reject tuners, carbon kits, replicas, "OEM replacement" body kits.
+- Reject: toys, diecast, scale models, merch, blogs, docs, company registries, domain shops, clothing, guitars, software, new whole cars for sale at dealerships unless salvage/donor was requested, unrelated websites.
+
+Return ONLY a JSON array of the integer indexes to KEEP, e.g. [0,3,7]. No prose.`;
+  const user = [
+    'GOAL: ' + (project.goal || ''),
+    'CATEGORIES: ' + ((cfg.categories || []).join(' | ') || '(none)'),
+    'RULES: ' + ((cfg.rules || []).join(' | ') || '(none)'),
+    'ALLOWED KINDS: ' + (kinds.join(', ') || 'any relevant parts'),
+    'CANDIDATES:',
+    JSON.stringify(catalog)
+  ].join('\n');
+  try {
+    const text = await call({
+      model: MODEL,
+      max_tokens: 800,
+      system,
+      messages: [{ role: 'user', content: user }]
+    });
+    const parsed = extractJson(text);
+    const idx = Array.isArray(parsed) ? parsed : (parsed && parsed.keep) || [];
+    const keep = new Set(idx.map(Number).filter((n) => n >= 0 && n < slice.length));
+    const kept = slice.filter((_, i) => keep.has(i));
+    console.log('Judge kept', kept.length, 'of', slice.length, '(pool', listings.length, ')');
+    return kept;
+  } catch (e) {
+    console.warn('Judge failed, keeping heuristic filter only:', e.message);
+    return slice;
+  }
 }

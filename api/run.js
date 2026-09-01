@@ -1,6 +1,6 @@
 import { sql, ensureSchema, readBody, uid, parsePriceNum } from './_db.js';
 import { requireAuth } from './_auth.js';
-import { runSearch, normalizeListing } from './_anthropic.js';
+import { runSearch, normalizeListing, judgeListings } from './_anthropic.js';
 import { runGrokSearch, grokEnabled } from './_grok.js';
 import { runSalvageSearch } from './_salvage.js';
 import { normCountries, countryConstraint } from './_geo.js';
@@ -80,7 +80,7 @@ function dropSold(listings) {
   return listings.filter(l => !SOLD_RE.test((l.title || '') + ' | ' + (l.condition || '')));
 }
 
-const JUNK_URL_RE = /(reddit\.com|youtube\.com|youtu\.be|wikipedia\.org|facebook\.com|twitter\.com|x\.com|instagram\.com|911uk\.com|\/threads?\/|showthread|viewtopic|\/wiki\/)/i;
+const JUNK_URL_RE = /(reddit\.com|youtube\.com|youtu\.be|wikipedia\.org|facebook\.com|twitter\.com|x\.com|instagram\.com|911uk\.com|\/threads?\/|showthread|viewtopic|\/wiki\/|learn\.microsoft\.|microsoft\.com|gov\.uk|company-information\.service\.gov|names\.co\.uk|whitefoxboutique|pinterest\.|tiktok\.|linkedin\.|quora\.|stackexchange\.|stackoverflow\.|medium\.com)/i;
 
 const MARKET_HOST_RE = /(ebay\.|copart\.|iaai\.|pickles\.|manheim\.|carfast\.|amazon\.|fbcdn\.|facebook\.com\/marketplace|parts4usa|pelicanparts|fcpeuro|ecstuning|design911|eurospares|oemparts|autohausaz|suncoast|rockauto|lkq|car-part\.com|partsouq|amayama|toyotaparts|porsche\.|tetreault|breakers)/i;
 
@@ -169,8 +169,37 @@ const GEN_FAMILIES = [
   ['971', '970'],
   ['9y0', '958', '955']
 ];
-const AFTERMARKET_RE = /\bafter[\s-]?market\b|\breplica\b|\brepro(?:duction)?\b|\bnon-?genuine\b|\bpattern part\b|\bnot oem\b|\bnot genuine\b|\bimitation\b|\blook-?alike\b|\brep\.?\s*carbon\b/i;
-const OEM_RE = /\boem\b|\bgenuine\b|\boriginal equipment\b|\bporsche tequipment\b|\boe part\b/i;
+const AFTERMARKET_RE = /\bafter[\s-]?market\b|\breplica\b|\brepro(?:duction)?\b|\bnon-?genuine\b|\bpattern part\b|\bnot oem\b|\bnot genuine\b|\bimitation\b|\blook-?alike\b|\brep\.?\s*carbon\b|\bforged carbon\b|\bvented front fenders?\b|\bwith louvres\b|\boem replacement\b|\breplacement gt3/i;
+const TOY_RE = /\b(?:hot wheels|matchbox|die-?cast|diecast|scale model|model car|model kit|miniature car|toy car|toys?\b|lego\b|playmobil|tomica|minichamps|autoart|bburago|maisto|tarmac works|spark model|ignition model|kyosho|almost real|gt spirit|cm-model|1:18|1:43|1:24|1:64|1\/18|1\/43|1\/24|1\/64|radio[\s-]?control|rc car|slot car)\b/i;
+const TOY_HOST_RE = /(hotwheels|diecastxchange|diecastdepot|modelcar|minichamps|sparkmodel)/i;
+const TUNER_HOST_RE = /(dmc\.ag|vorsteiner|techart|caractere|1016industries|carbonfibergear|unpluggedperformance|apexclusive|9ff\.de|gemballa|mansory|fi-exhaust|akrapovic|apexspares)/i;
+const OEM_RE = /\bgenuine oem\b|\bgenuine porsche\b|\boriginal equipment\b|\bporsche tequipment\b|\boe part\b|\boem part\b/;
+const STOP_REL = new Set(['and','the','for','with','parts','part','from','this','that','find','search','oem','used','new','sale','the','a','an','or']);
+
+function hostOf(url) {
+  try { return new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return ''; }
+}
+
+function relevanceTokens(project) {
+  const cfg = project.config || {};
+  const raw = ((project.goal || '') + ' ' + ((cfg.categories || []).join(' ')) + ' ' + ((cfg.queries || []).slice(0, 4).join(' ')));
+  return raw.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/)
+    .filter((w) => w.length > 2 && !STOP_REL.has(w));
+}
+
+function isRelevantToGoal(l, tokens) {
+  if (!tokens.length) return true;
+  const hay = listingBlob(l);
+  let n = 0;
+  for (const t of tokens) {
+    if (hay.indexOf(t) !== -1) n++;
+  }
+  const strong = tokens.filter((t) => /^(porsche|992|991|911|gt3|gt2|turbo|cayman|boxster|macan|cayenne|panamera|\d{5,})$/.test(t));
+  const strongHits = strong.filter((t) => hay.indexOf(t) !== -1).length;
+  if (strong.length && strongHits === 0 && n < 2) return false;
+  if (n < 2 && strongHits < 1) return false;
+  return true;
+}
 
 function listingBlob(l) {
   return [l.title, l.description, l.url, l.seller, Array.isArray(l.badges) ? l.badges.join(' ') : ''].join(' ').toLowerCase();
@@ -192,20 +221,25 @@ export function projectSpec(project) {
   const oemWanted = !!(f.oem_new || f.oem_used || f.oem);
   const aftermarketOk = !!f.aftermarket;
   const oemOnly = oemWanted && !aftermarketOk;
-  return { targetGens, forbidGens, oemOnly, aftermarketOk };
+  return { targetGens, forbidGens, oemOnly, aftermarketOk, tokens: relevanceTokens(project) };
 }
 
 function dropOffSpec(listings, spec) {
   if (!spec) return listings;
   return listings.filter((l) => {
     const hay = listingBlob(l);
+    const host = hostOf(l.url);
+    if (!isRelevantToGoal(l, spec.tokens || [])) return false;
     if (spec.forbidGens.length) {
       const hasTarget = spec.targetGens.some((g) => new RegExp('\\b' + g + '\\b', 'i').test(hay));
       const hasForbid = spec.forbidGens.some((g) => new RegExp('\\b' + g + '\\b', 'i').test(hay));
-      // Drop 991-only (etc.) listings. Keep if they also name the target gen (shared fitment).
       if (hasForbid && !hasTarget) return false;
     }
-    if (spec.oemOnly && AFTERMARKET_RE.test(hay) && !OEM_RE.test(hay)) return false;
+    if (TOY_RE.test(hay) || TOY_HOST_RE.test(host)) return false;
+    if (spec.oemOnly) {
+      if (TUNER_HOST_RE.test(host) || TUNER_HOST_RE.test(hay)) return false;
+      if (AFTERMARKET_RE.test(hay)) return false;
+    }
     return true;
   });
 }
@@ -279,7 +313,17 @@ export default async function handler(req, res) {
     const afterSold = dropSold(merged);
     const afterJunk = dropJunk(afterSold);
     const afterSpec = dropOffSpec(afterJunk, spec);
-    let listings = afterSpec.filter(l => !l.url || !downvoted.has(normalizeUrl(l.url)));
+    const afterVote = afterSpec.filter(l => !l.url || !downvoted.has(normalizeUrl(l.url)));
+    let judged = afterVote;
+    let judgeErr = null;
+    try {
+      judged = await judgeListings(project, afterVote);
+    } catch (e) {
+      judgeErr = (e && e.message) ? e.message : String(e);
+      console.warn('Judge error:', judgeErr);
+      judged = afterVote;
+    }
+    let listings = judged;
 
     listings = snapSections(listings, (project.config && project.config.categories) || []);
 
@@ -292,7 +336,10 @@ export default async function handler(req, res) {
       droppedSold: merged.length - afterSold.length,
       droppedJunk: afterSold.length - afterJunk.length,
       droppedOffSpec: afterJunk.length - afterSpec.length,
-      droppedDownvote: afterSpec.length - listings.length,
+      droppedDownvote: afterSpec.length - afterVote.length,
+      judgedFrom: afterVote.length,
+      judgedKept: judged.length,
+      judgeErr,
       targetGens: spec.targetGens,
       oemOnly: spec.oemOnly,
       final: listings.length,
