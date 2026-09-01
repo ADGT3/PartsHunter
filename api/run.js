@@ -314,13 +314,19 @@ export default async function handler(req, res) {
       return [];
     });
 
-    [claudeListings, grokListings, salvageListings] = await Promise.all([claudePromise, grokPromise, salvagePromise]);
+    const catalogPromise = runCatalogSearch(searchProject).catch(e => {
+      catalogErr = (e && e.message) ? e.message : String(e);
+      console.error('Catalog failed:', catalogErr);
+      return [];
+    });
+
+    [claudeListings, grokListings, salvageListings, catalogListings] = await Promise.all([claudePromise, grokPromise, salvagePromise, catalogPromise]);
 
     const { rows: existingRows } = await sql`SELECT section, title, description, price, currency, condition, seller, url, image, badges, source FROM listings WHERE project_id = ${projectId}`;
     const existing = existingRows.map(r => ({ ...r, badges: Array.isArray(r.badges) ? r.badges : [] }));
     const downvoted = new Set((fb || []).filter(f => f.vote < 0).map(f => normalizeUrl(f.listing_url)));
 
-    const merged = mergeAndDeduplicate([...salvageListings, ...existing], claudeListings, grokListings);
+    const merged = mergeAndDeduplicate([...salvageListings, ...catalogListings, ...existing], claudeListings, grokListings);
     const spec = projectSpec(project);
     const afterSold = dropSold(merged);
     const afterJunk = dropJunk(afterSold);
@@ -351,6 +357,8 @@ export default async function handler(req, res) {
       claude: claudeListings.length,
       grok: grokEnabled() ? grokListings.length : 'skipped',
       salvage: salvageListings.length,
+      catalog: catalogListings.length,
+      catalogErr,
       existing: existing.length,
       afterMerge: merged.length,
       droppedSold: merged.length - afterSold.length,
