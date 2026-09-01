@@ -3,6 +3,7 @@ import { requireAuth } from './_auth.js';
 import { runSearch, normalizeListing, judgeListings } from './_anthropic.js';
 import { runGrokSearch, grokEnabled } from './_grok.js';
 import { runSalvageSearch } from './_salvage.js';
+import { runCatalogSearch } from './_catalogs.js';
 import { normCountries, countryConstraint } from './_geo.js';
 
 const CAP = Number(process.env.RUN_CAP_PER_DAY || 20);
@@ -224,6 +225,15 @@ export function projectSpec(project) {
   return { targetGens, forbidGens, oemOnly, aftermarketOk, tokens: relevanceTokens(project) };
 }
 
+function isStrongMatch(l, spec) {
+  const hay = listingBlob(l);
+  if (/\b\d{3}\d{6}[a-z]?\b/i.test(hay)) return true;
+  const genOk = !spec.targetGens.length || spec.targetGens.some((g) => new RegExp('\\b' + g + '\\b', 'i').test(hay));
+  const partish = /(headlight|tail.?light|fender|wing|bumper|bonnet|hood|door|panel|caliper|rotor|disc|radiator|condenser|mirror|spoiler|exhaust|caliper|knuckle|hub|control arm|wishbone|subframe|airbag|seat|harness|ecu|pcm|turbo|intercooler|driveshaft|halfshaft|gearbox|pdk|clutch)/i.test(hay);
+  const brand = /porsche|oem|genuine|eurospares|pelican|design911|partsouq|amayama|lkq/.test(hay);
+  return genOk && partish && brand;
+}
+
 function dropOffSpec(listings, spec) {
   if (!spec) return listings;
   return listings.filter((l) => {
@@ -268,9 +278,11 @@ export default async function handler(req, res) {
     let claudeListings = [];
     let grokListings = [];
     let salvageListings = [];
+    let catalogListings = [];
     let claudeErr = null;
     let grokErr = null;
     let salvageErr = null;
+    let catalogErr = null;
 
     // Apply the project's filter checkboxes/country as extra search constraints.
     const specForPrompt = projectSpec(project);
@@ -322,6 +334,14 @@ export default async function handler(req, res) {
       judgeErr = (e && e.message) ? e.message : String(e);
       console.warn('Judge error:', judgeErr);
       judged = afterVote;
+    }
+    const judgedUrls = new Set(judged.map((l) => normalizeUrl(l.url) || l.title));
+    for (const l of afterVote) {
+      const key = normalizeUrl(l.url) || l.title;
+      if (!judgedUrls.has(key) && isStrongMatch(l, spec)) {
+        judged.push(l);
+        judgedUrls.add(key);
+      }
     }
     let listings = judged;
 

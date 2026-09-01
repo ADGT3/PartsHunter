@@ -536,14 +536,18 @@ export async function judgeListings(project, listings) {
   if (f.oem_used || f.oem) kinds.push('used genuine OEM parts');
   if (f.aftermarket) kinds.push('aftermarket parts');
   if (f.salvage) kinds.push('salvage / donor vehicles');
-  const system = `You are a strict parts-listing judge. Decide which candidates are REAL matches for the hunt.
-KEEP only if ALL are true:
-- It is a full-size car part for sale, or a whole salvage/donor vehicle if salvage is allowed.
-- It matches the GOAL vehicle (same model/generation). Shared-fitment is OK only if the listing itself says it fits that vehicle.
-- It matches the allowed kinds. If OEM-only, reject tuners, carbon kits, replicas, "OEM replacement" body kits.
-- Reject: toys, diecast, scale models, merch, blogs, docs, company registries, domain shops, clothing, guitars, software, new whole cars for sale at dealerships unless salvage/donor was requested, unrelated websites.
+  const system = `You filter a parts-hunt candidate list. Default is KEEP.
 
-Return ONLY a JSON array of the integer indexes to KEEP, e.g. [0,3,7]. No prose.`;
+DROP only when the item is clearly not a useful result:
+- Unrelated websites (docs, blogs, clothing, guitars, domain shops, software, Q&A)
+- Toys, diecast, scale models, merch, posters
+- Wrong car / wrong generation with no shared-fitment claim
+- Tuner/replica/carbon kit when ALLOWED KINDS is OEM-only
+- Brand-new street cars at a dealership, unless salvage/donor is allowed
+
+KEEP used and new OEM catalogue pages, breakers, eBay part listings, dealer parts, and salvage/donor cars that match the goal. If unsure, KEEP.
+
+Return ONLY a JSON array of integer indexes to KEEP, e.g. [0,1,2,5]. Include as many valid parts as you can. No prose.`;
   const user = [
     'GOAL: ' + (project.goal || ''),
     'CATEGORIES: ' + ((cfg.categories || []).join(' | ') || '(none)'),
