@@ -82,9 +82,11 @@ function dropSold(listings) {
 
 const JUNK_URL_RE = /(reddit\.com|youtube\.com|youtu\.be|wikipedia\.org|facebook\.com|twitter\.com|x\.com|instagram\.com|911uk\.com|\/threads?\/|showthread|viewtopic|\/wiki\/)/i;
 
+const MARKET_HOST_RE = /(ebay\.|copart\.|iaai\.|pickles\.|manheim\.|carfast\.|amazon\.|fbcdn\.|facebook\.com\/marketplace|parts4usa|pelicanparts|fcpeuro|ecstuning|design911|eurospares|oemparts|autohausaz|suncoast|rockauto|lkq|car-part\.com|partsouq|amayama|toyotaparts|porsche\.|tetreault|breakers)/i;
+
 function isProductLike(url) {
   const u = (url || '').toLowerCase();
-  return /\/lot\/\d+|\/used\/details\/|\/itm\/|\/p\/\d|\/product[s]?\//.test(u);
+  return /\/lot\/\d+|\/used\/details\/|\/itm\/|\/p\/\d|\/product[s]?\//.test(u) || MARKET_HOST_RE.test(u);
 }
 
 // Index/search pages only — lot/product detail URLs are kept even if the path

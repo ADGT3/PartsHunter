@@ -13,7 +13,7 @@ const PAGE_CHARS = Number(process.env.FETCH_PAGE_CHARS || 12000);
 const WEB_SEARCH_TOOL = {
   type: 'web_search_20250305',
   name: 'web_search',
-  max_uses: Number(process.env.SEARCH_MAX_USES || 6)
+  max_uses: Number(process.env.SEARCH_MAX_USES || 8)
 };
 
 const FETCH_TOOL = {
@@ -447,11 +447,12 @@ export async function runSearch(project, feedback) {
 Tool rules:
 - Prefer web_search, then fetch_page on a SMALL number of the best DETAIL pages (not search indexes).
 - The system will automatically upgrade to browser when the page is JavaScript-heavy.
-- Do not exhaust the search budget: a few high-quality queries beat many vague ones.
-- Focus on salvage/auction sources (Copart, IAAI, Pickles, Manheim) when relevant.
-- Extract accurate price, condition, seller, and image when the page shows them.
+- Use the search budget: run several DISTINCT queries from SEARCH QUERIES (part number, OEM, used, salvage). Do not stop after one query.
+- Fetch at most 3 detail pages — spend the budget on more searches, not more fetches.
+- Focus on salvage/auction and parts catalogues (Copart, IAAI, Pickles, eBay, OEM dealers) when relevant.
+- Extract price, condition, seller, and image when shown.
 - Never invent a URL. You MAY list a result using the exact URL + title from web_search even if you did not fetch the page.
-- Prefer 8–20 real hits over an empty array. Empty array only if search returned nothing relevant.
+- Return EVERY distinct for-sale hit from the search results (aim 12–25). Empty array only if search returned nothing relevant.
 - After tools, output ONLY a JSON array.
 
 ${LISTING_SCHEMA}`;
@@ -492,11 +493,22 @@ ${LISTING_SCHEMA}`;
     console.warn('Search returned no text (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + blockTypes(data) + ', hits=' + hits.length + ')');
   }
 
-  if (parsed.length) return parsed;
-
   const harvested = hitsToListings(hits, categories);
-  console.log('Claude harvested search hits:', harvested.length, 'parsed listings:', parsed.length);
-  if (harvested.length) return harvested;
+  const byUrl = new Map();
+  for (const l of [...parsed, ...harvested]) {
+    const key = (l.url || l.title || '').toLowerCase().replace(/\/$/, '');
+    if (!key) continue;
+    if (!byUrl.has(key)) byUrl.set(key, l);
+    else {
+      const ex = byUrl.get(key);
+      if (!ex.image && l.image) ex.image = l.image;
+      if (!ex.price && l.price) ex.price = l.price;
+      if (!ex.description && l.description) ex.description = l.description;
+    }
+  }
+  const merged = Array.from(byUrl.values());
+  console.log('Claude parsed:', parsed.length, 'harvested:', harvested.length, 'merged:', merged.length);
+  if (merged.length) return merged;
 
   if (!text) {
     throw new Error('Search returned no text and no search hits (stop_reason=' + ((data && data.stop_reason) || '?') + ', blocks=' + blockTypes(data) + ')');
