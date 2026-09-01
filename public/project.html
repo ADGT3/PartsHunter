@@ -172,10 +172,14 @@ document.addEventListener('DOMContentLoaded', function () {
     $('editMsg').innerHTML = '<div class="banner"><span class="spinner"></span> Re-drafting and re-running… this can take a couple of minutes.</div>';
     try {
       await PH.api('/api/project?id=' + encodeURIComponent(id), { method: 'PATCH', body: { name, goal, config: { filters, categories: editCats }, reexpand: true } });
-      await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
+      const run = await PH.api('/api/run', { method: 'POST', body: { projectId: id } });
       const data = await PH.api('/api/project?id=' + encodeURIComponent(id));
       state.project = data.project; state.listings = data.listings || []; state.feedback = fbMap(data.feedback);
       $('editPanel').style.display = 'none'; $('pName').textContent = state.project.name; $('pGoal').textContent = state.project.goal;
+      if (run && run.warning) {
+        $('editPanel').style.display = 'block';
+        $('editMsg').innerHTML = '<div class="banner err">' + PH.esc(run.warning) + '</div>';
+      }
       learn(); render();
     } catch (e) { $('editMsg').innerHTML = '<div class="banner err">' + PH.esc(e.message) + '</div>'; }
   });
